@@ -23,13 +23,23 @@
       "require": "./dist/writer/index.cjs"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "vite build && tsc --emitDeclarationOnly --outDir dist",
     "type-check": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
-  "keywords": ["bms", "be-music-script", "rhythm-game", "parser", "bmson"],
+  "keywords": [
+    "bms",
+    "be-music-script",
+    "rhythm-game",
+    "parser",
+    "bmson"
+  ],
   "license": "MIT",
   "dependencies": {
     "@epic-web/invariant": "^1.0.0",
@@ -39,6 +49,7 @@
     "@types/lodash": "^4.17.0",
     "typescript": "^5.7.2",
     "vite": "^6.0.5",
-    "vite-plugin-dts": "^4.3.0"
+    "vite-plugin-dts": "^4.3.0",
+    "vitest": "^4.1.0"
   }
 }
