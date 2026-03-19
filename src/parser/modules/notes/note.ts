@@ -1,0 +1,52 @@
+import DataStructure from '../../utils/dataStructure';
+
+/**
+ * 노트 타입 정의
+ * - playable: 플레이어가 쳐야 하는 노트 (채널 11-19, 21-29)
+ * - invisible: 보이지 않는 고스트 노트 (채널 31-39, 41-49)
+ * - landmine: 지뢰 노트 (채널 D1-D9, E1-E9)
+ * - bgm: 자동 재생 BGM 노트 (채널 01)
+ */
+export type NoteType = 'playable' | 'invisible' | 'landmine' | 'bgm';
+
+/** 노트차트의 개별 노트 */
+export interface BMSNote {
+    beat: number;
+    endBeat?: number;
+    column?: string;
+    keysound: string;
+
+    /**
+     * 노트 타입
+     */
+    noteType?: NoteType;
+
+    /**
+     * 원본 BMS 채널 (디버깅/분석용)
+     */
+    channel?: string;
+
+    /**
+     * 지뢰 노트 데미지 (0-100%)
+     * landmine 타입 노트에서만 유효
+     */
+    damage?: number;
+
+    /**
+     * [bmson] 사운드 파일에서 재생을 시작할 시간(초).
+     */
+    keysoundStart?: number;
+
+    /**
+     * [bmson] 사운드 파일에서 재생을 중지할 시간(초).
+     * `undefined`일 경우, 사운드 파일이 끝까지 재생됨을 의미합니다.
+     */
+    keysoundEnd?: number;
+}
+
+export const Note = DataStructure<BMSNote>({
+    beat: 'number',
+    endBeat: DataStructure?.maybe<number>('number'),
+    column: DataStructure?.maybe<string>('string'),
+    keysound: 'string',
+});

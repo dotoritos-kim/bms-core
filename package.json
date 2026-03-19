@@ -1,0 +1,44 @@
+{
+  "name": "@rhythm-archive/bms-core",
+  "version": "0.1.0",
+  "description": "BMS (Be-Music Script) parser and writer library - supports BMS/BME/BML/PMS/BMSON formats",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs",
+      "types": "./dist/index.d.ts"
+    },
+    "./parser": {
+      "import": "./dist/parser/index.js",
+      "require": "./dist/parser/index.cjs",
+      "types": "./dist/parser/index.d.ts"
+    },
+    "./writer": {
+      "import": "./dist/writer/index.js",
+      "require": "./dist/writer/index.cjs",
+      "types": "./dist/writer/index.d.ts"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "vite build && tsc --emitDeclarationOnly --outDir dist",
+    "type-check": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "keywords": ["bms", "be-music-script", "rhythm-game", "parser", "bmson"],
+  "license": "MIT",
+  "dependencies": {
+    "@epic-web/invariant": "^1.0.0",
+    "lodash": "^4.17.21"
+  },
+  "devDependencies": {
+    "@types/lodash": "^4.17.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5",
+    "vite-plugin-dts": "^4.3.0"
+  }
+}
