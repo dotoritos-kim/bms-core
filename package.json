@@ -8,19 +8,19 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "require": "./dist/index.cjs",
-      "types": "./dist/index.d.ts"
+      "require": "./dist/index.cjs"
     },
     "./parser": {
+      "types": "./dist/parser/index.d.ts",
       "import": "./dist/parser/index.js",
-      "require": "./dist/parser/index.cjs",
-      "types": "./dist/parser/index.d.ts"
+      "require": "./dist/parser/index.cjs"
     },
     "./writer": {
+      "types": "./dist/writer/index.d.ts",
       "import": "./dist/writer/index.js",
-      "require": "./dist/writer/index.cjs",
-      "types": "./dist/writer/index.d.ts"
+      "require": "./dist/writer/index.cjs"
     }
   },
   "files": ["dist"],
