@@ -113,8 +113,45 @@ export class BMSWriter {
   ): string {
     const lines: string[] = [];
 
+    // LNOBJ 모드: 헤더에 lnobj 값 설정, lntype 제거
+    const headers = { ...chart.headers };
+    const lnMode = this.options.lnMode || 'channel';
+    if (lnMode === 'lnobj') {
+      let lnObjValue = this.options.lnObjValue || headers.lnobj || '';
+      if (!lnObjValue) {
+        // 미사용 WAV ID 중 가장 큰 값을 LNOBJ 마커로 자동 할당
+        const usedIds = new Set<string>();
+        for (const key of headers.wav.keys()) usedIds.add(key.toUpperCase());
+        for (const n of chart.notes) {
+          if (n.keysound) usedIds.add(n.keysound.toUpperCase());
+        }
+        for (let i = 1295; i >= 1; i--) {
+          const candidate = i.toString(36).toUpperCase().padStart(2, '0');
+          if (!usedIds.has(candidate)) {
+            lnObjValue = candidate;
+            break;
+          }
+        }
+      }
+      if (lnObjValue) {
+        headers.lnobj = lnObjValue;
+        headers.lntype = undefined;
+        // WAV 정의에 LNOBJ용 무음 항목 추가 (없으면)
+        if (!headers.wav.has(lnObjValue) && !headers.wav.has(lnObjValue.toLowerCase())) {
+          headers.wav = new Map(headers.wav);
+          // LNOBJ 마커는 WAV 정의 없이도 동작하지만 일부 플레이어 호환을 위해 추가
+        }
+        this.options.lnObjValue = lnObjValue;
+      }
+    } else {
+      // 채널 모드: lnobj 제거, lntype 유지 (있으면)
+      if (!headers.lntype && chart.notes.some(n => n.endBeat !== undefined)) {
+        headers.lntype = 1;
+      }
+    }
+
     // 헤더 작성
-    lines.push(...writeHeaders(chart.headers, this.options));
+    lines.push(...writeHeaders(headers, this.options));
 
     // 채널 데이터 작성
     lines.push(...writeChannels(chart, mapping, this.options));
@@ -321,10 +358,12 @@ export class BMSWriter {
 
     // 비트 계산
     const beat = chart.measureToBeat(obj.measure, obj.fraction);
+    const tick = Math.round(beat * 960);
 
     return {
       id: `note-${id}`,
       beat,
+      tick,
       measure: obj.measure,
       fraction: obj.fraction,
       column,

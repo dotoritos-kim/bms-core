@@ -74,4 +74,59 @@ export class TimeSignatures {
         for (let i = 0; i < measure; i++) sum += this.getBeats(i);
         return sum + this.getBeats(measure) * fraction;
     }
+
+    /**
+     * 비트 번호를 마디 번호와 마디 내 분수로 변환합니다.
+     * measureToBeat의 역함수입니다.
+     *
+     * ```js
+     * timeSignatures.beatToMeasure(0.0)  // => { measure: 0, fraction: 0.0 }
+     * timeSignatures.beatToMeasure(2.0)  // => { measure: 0, fraction: 0.5 }
+     * timeSignatures.beatToMeasure(4.0)  // => { measure: 1, fraction: 0.0 }
+     * timeSignatures.beatToMeasure(5.5)  // => { measure: 1, fraction: 0.5 } (3/4 마디일 때)
+     * ```
+     *
+     * @param beat 비트 번호 (0부터 시작)
+     * @param maxMeasure 탐색 상한 마디 수 (기본: 999)
+     * @returns { measure, fraction }
+     */
+    beatToMeasure(beat: number, maxMeasure: number = 999): { measure: number; fraction: number } {
+        if (beat <= 0) return { measure: 0, fraction: 0 };
+        let sum = 0;
+        for (let i = 0; i <= maxMeasure; i++) {
+            const beats = this.getBeats(i);
+            if (sum + beats > beat) {
+                const fraction = beats > 0 ? (beat - sum) / beats : 0;
+                return { measure: i, fraction };
+            }
+            sum += beats;
+        }
+        // beat가 maxMeasure를 초과하면 4/4 가정으로 추정
+        const remaining = beat - sum;
+        const extraMeasures = Math.floor(remaining / 4);
+        const extraFraction = (remaining % 4) / 4;
+        return { measure: maxMeasure + 1 + extraMeasures, fraction: extraFraction };
+    }
+
+    /**
+     * Map<number, number> (에디터 형식)에서 TimeSignatures를 생성합니다.
+     */
+    static fromMap(map: Map<number, number>): TimeSignatures {
+        const ts = new TimeSignatures();
+        for (const [measure, size] of map) {
+            ts.set(measure, size);
+        }
+        return ts;
+    }
+
+    /**
+     * TimeSignatures를 Map<number, number>로 변환합니다.
+     */
+    toMap(): Map<number, number> {
+        const map = new Map<number, number>();
+        for (const [key, value] of Object.entries(this._values)) {
+            map.set(Number(key), value);
+        }
+        return map;
+    }
 }

@@ -19,6 +19,10 @@ export interface BMSWriterOptions {
   includeComments?: boolean;
   /** 빈 마디 생략 여부 */
   skipEmptyMeasures?: boolean;
+  /** 롱노트 출력 형식 (기본: 'channel' = 5x/6x 채널, 'lnobj' = LNOBJ 마커) */
+  lnMode?: 'channel' | 'lnobj';
+  /** LNOBJ 마커 값 (lnMode='lnobj'일 때 사용, 기본: 헤더의 lnobj 값 또는 미사용 최대 WAV ID) */
+  lnObjValue?: string;
 }
 
 /**
@@ -78,6 +82,10 @@ export interface BMSHeaderData {
 export interface EditableBMSNote extends BMSNote {
   /** 고유 ID (편집용) */
   id: string;
+  /** Tick position (960 ticks/beat). Primary source of truth in editor. */
+  tick: number;
+  /** End tick for long notes. */
+  endTick?: number;
   /** 노트가 위치한 마디 */
   measure: number;
   /** 마디 내 분수 위치 (0-1) */

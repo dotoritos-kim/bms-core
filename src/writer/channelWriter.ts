@@ -154,10 +154,34 @@ function gcd(a: number, b: number): number {
 }
 
 /**
- * 분수를 192분음표 기준으로 반올림
+ * 분수를 주어진 resolution 기준으로 반올림
  */
 function quantizeFraction(fraction: number, resolution: number): number {
   return Math.round(fraction * resolution) / resolution;
+}
+
+/**
+ * Tick 기반 fraction 계산 (부동소수점 오차 없음)
+ * tick이 있는 노트에서는 이 함수로 fraction을 직접 계산
+ */
+function tickToFractionInMeasure(
+  tick: number,
+  timeSignatures: Map<number, number>
+): { measure: number; fraction: number } {
+  const TICKS_PER_BEAT = 960;
+  let currentTick = 0;
+  let measure = 0;
+  for (;;) {
+    const size = timeSignatures.get(measure) ?? 1.0;
+    const ticksInMeasure = Math.round(4 * size * TICKS_PER_BEAT);
+    if (currentTick + ticksInMeasure > tick) {
+      const fraction = (tick - currentTick) / ticksInMeasure;
+      return { measure, fraction };
+    }
+    currentTick += ticksInMeasure;
+    measure++;
+    if (measure > 9999) return { measure: 0, fraction: 0 }; // safety
+  }
 }
 
 /**
@@ -205,18 +229,19 @@ function getChannelMap(
  */
 function getNoteChannel(
   note: EditableBMSNote,
-  mapping: ReverseChannelMapping
+  mapping: ReverseChannelMapping,
+  lnMode: 'channel' | 'lnobj' = 'channel'
 ): string | null {
   // BGM 노트
   if (note.noteType === 'bgm' || !note.column) {
     return '01';
   }
 
-  const channelMap = getChannelMap(
-    note.noteType,
-    !!note.endBeat,
-    mapping
-  );
+  // LNOBJ 모드에서는 LN도 playable 채널 사용 (5x/6x 대신 1x/2x)
+  const usePlayableForLN = lnMode === 'lnobj' && !!note.endBeat;
+  const channelMap = usePlayableForLN
+    ? mapping.playable
+    : getChannelMap(note.noteType, !!note.endBeat, mapping);
 
   return channelMap.get(note.column) || null;
 }
@@ -261,6 +286,45 @@ function createChannelDataForMeasure(
 }
 
 /**
+ * 같은 슬롯에 겹치는 이벤트를 여러 레이어로 분리
+ * BGM 채널(01)에서 동시에 재생되는 키음을 각각 별도의 #xxx01: 라인으로 출력하기 위함
+ */
+function splitOverlappingEvents(
+  events: Array<{ fraction: number; value: string }>,
+  resolution: number
+): Array<Array<{ fraction: number; value: string }>> {
+  if (events.length === 0) return [];
+
+  // 슬롯별로 이벤트 그룹화
+  const slotMap = new Map<number, Array<{ fraction: number; value: string }>>();
+  for (const event of events) {
+    const slot = Math.round(quantizeFraction(event.fraction, resolution) * resolution);
+    if (!slotMap.has(slot)) {
+      slotMap.set(slot, []);
+    }
+    slotMap.get(slot)!.push(event);
+  }
+
+  // 겹침이 없으면 단일 레이어 반환
+  let maxOverlap = 0;
+  for (const group of slotMap.values()) {
+    if (group.length > maxOverlap) maxOverlap = group.length;
+  }
+  if (maxOverlap <= 1) return [events];
+
+  // 레이어별로 분배: 각 슬롯의 n번째 이벤트를 n번째 레이어에 배치
+  const layers: Array<Array<{ fraction: number; value: string }>> = [];
+  for (const group of slotMap.values()) {
+    for (let i = 0; i < group.length; i++) {
+      if (!layers[i]) layers[i] = [];
+      layers[i].push(group[i]);
+    }
+  }
+
+  return layers;
+}
+
+/**
  * 노트를 채널 데이터로 변환
  */
 export function writeNoteChannels(
@@ -270,22 +334,30 @@ export function writeNoteChannels(
   timeSignatures: Map<number, number> = new Map()
 ): ChannelData[] {
   const resolution = options.resolution || 192;
+  const lnMode = options.lnMode || 'channel';
+  const lnObjValue = options.lnObjValue || '';
   const channelDataList: ChannelData[] = [];
 
   // 마디별, 채널별로 노트 그룹화
   const measureChannelMap = new Map<number, Map<string, Array<{ fraction: number; value: string }>>>();
 
   for (const note of notes) {
-    const channel = getNoteChannel(note, mapping);
+    const channel = getNoteChannel(note, mapping, lnMode);
     if (!channel) continue;
 
-    const quantizedFraction = quantizeFraction(note.fraction, resolution);
+    // Prefer tick-based position (no floating point error) when tick is available
+    const tickPos = note.tick !== undefined
+      ? tickToFractionInMeasure(note.tick, timeSignatures)
+      : null;
+    const noteMeasure = tickPos?.measure ?? note.measure;
+    const noteFraction = tickPos?.fraction ?? note.fraction;
+    const quantizedFraction = quantizeFraction(noteFraction, resolution);
 
     // 마디 맵 가져오기/생성
-    if (!measureChannelMap.has(note.measure)) {
-      measureChannelMap.set(note.measure, new Map());
+    if (!measureChannelMap.has(noteMeasure)) {
+      measureChannelMap.set(noteMeasure, new Map());
     }
-    const channelMap = measureChannelMap.get(note.measure)!;
+    const channelMap = measureChannelMap.get(noteMeasure)!;
 
     // 채널 이벤트 배열 가져오기/생성
     if (!channelMap.has(channel)) {
@@ -310,10 +382,10 @@ export function writeNoteChannels(
         }
         if (!layerChannel) continue;
 
-        if (!measureChannelMap.has(note.measure)) {
-          measureChannelMap.set(note.measure, new Map());
+        if (!measureChannelMap.has(noteMeasure)) {
+          measureChannelMap.set(noteMeasure, new Map());
         }
-        const layerChannelMap = measureChannelMap.get(note.measure)!;
+        const layerChannelMap = measureChannelMap.get(noteMeasure)!;
         if (!layerChannelMap.has(layerChannel)) {
           layerChannelMap.set(layerChannel, []);
         }
@@ -324,26 +396,47 @@ export function writeNoteChannels(
       }
     }
 
-    // 롱노트 끝 처리 (5x/6x 채널에 끝 이벤트 추가)
+    // 롱노트 끝 처리
     if (note.endBeat !== undefined && note.noteType !== 'landmine') {
-      const lnChannelMap = getChannelMap(note.noteType, true, mapping);
-      const lnChannel = note.column ? lnChannelMap.get(note.column) : null;
-      if (lnChannel) {
-        const { measure: endMeasure, fraction: endFraction } =
-          beatToMeasureFraction(note.endBeat, timeSignatures);
-        const endQuantized = quantizeFraction(endFraction, resolution);
+      const endPos = note.endTick !== undefined
+        ? tickToFractionInMeasure(note.endTick, timeSignatures)
+        : beatToMeasureFraction(note.endBeat, timeSignatures);
+      const endMeasure = endPos.measure;
+      const endQuantized = quantizeFraction(endPos.fraction, resolution);
 
-        if (!measureChannelMap.has(endMeasure)) {
-          measureChannelMap.set(endMeasure, new Map());
+      if (lnMode === 'lnobj' && lnObjValue && note.column) {
+        // LNOBJ 모드: playable 채널에 LNOBJ 마커를 끝 위치에 기록
+        const playableChannel = mapping.playable.get(note.column);
+        if (playableChannel) {
+          if (!measureChannelMap.has(endMeasure)) {
+            measureChannelMap.set(endMeasure, new Map());
+          }
+          const endChMap = measureChannelMap.get(endMeasure)!;
+          if (!endChMap.has(playableChannel)) {
+            endChMap.set(playableChannel, []);
+          }
+          endChMap.get(playableChannel)!.push({
+            fraction: endQuantized,
+            value: lnObjValue.toUpperCase().padStart(2, '0').slice(0, 2),
+          });
         }
-        const endChMap = measureChannelMap.get(endMeasure)!;
-        if (!endChMap.has(lnChannel)) {
-          endChMap.set(lnChannel, []);
+      } else {
+        // 채널 모드: 5x/6x 채널에 끝 이벤트 추가
+        const lnChannelMap = getChannelMap(note.noteType, true, mapping);
+        const lnChannel = note.column ? lnChannelMap.get(note.column) : null;
+        if (lnChannel) {
+          if (!measureChannelMap.has(endMeasure)) {
+            measureChannelMap.set(endMeasure, new Map());
+          }
+          const endChMap = measureChannelMap.get(endMeasure)!;
+          if (!endChMap.has(lnChannel)) {
+            endChMap.set(lnChannel, []);
+          }
+          endChMap.get(lnChannel)!.push({
+            fraction: endQuantized,
+            value: note.keysound.toUpperCase().padStart(2, '0').slice(0, 2),
+          });
         }
-        endChMap.get(lnChannel)!.push({
-          fraction: endQuantized,
-          value: note.keysound.toUpperCase().padStart(2, '0').slice(0, 2),
-        });
       }
     }
   }
@@ -351,14 +444,31 @@ export function writeNoteChannels(
   // 채널 데이터 생성
   for (const [measure, channelMap] of measureChannelMap) {
     for (const [channel, events] of channelMap) {
-      const channelData = createChannelDataForMeasure(
-        measure,
-        channel,
-        events,
-        resolution
-      );
-      if (channelData) {
-        channelDataList.push(channelData);
+      // BGM 채널(01)은 같은 슬롯에 여러 이벤트가 겹칠 수 있으므로
+      // 레이어별로 분리하여 여러 #xxx01: 라인을 생성해야 함
+      if (channel === '01') {
+        const layers = splitOverlappingEvents(events, resolution);
+        for (const layerEvents of layers) {
+          const channelData = createChannelDataForMeasure(
+            measure,
+            channel,
+            layerEvents,
+            resolution
+          );
+          if (channelData) {
+            channelDataList.push(channelData);
+          }
+        }
+      } else {
+        const channelData = createChannelDataForMeasure(
+          measure,
+          channel,
+          events,
+          resolution
+        );
+        if (channelData) {
+          channelDataList.push(channelData);
+        }
       }
     }
   }

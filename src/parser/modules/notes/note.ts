@@ -13,6 +13,10 @@ export type NoteType = 'playable' | 'invisible' | 'landmine' | 'bgm';
 export interface BMSNote {
     beat: number;
     endBeat?: number;
+    /** Tick position (960 ticks/beat). Primary for editor precision, derived from beat in parser. */
+    tick?: number;
+    /** End tick for long notes (960 ticks/beat). */
+    endTick?: number;
     column?: string;
     keysound: string;
 
