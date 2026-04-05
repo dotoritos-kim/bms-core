@@ -128,7 +128,7 @@ export class BMSParser {
 
             this.chart.headers.each((key, value) => {
                 if (key.toLowerCase().startsWith('bpm')) {
-                    const bpmKey = key.slice(3);
+                    const bpmKey = key.slice(3).toUpperCase();
                     bpmMap[bpmKey] = parseFloat(value);
                 }
             });
@@ -150,7 +150,14 @@ export class BMSParser {
 
                 // BPM 변경 처리
                 if (obj.channel === '03') {
-                    const bpmKey = obj.value.slice(0, 2);
+                    // 채널 03: 값 자체가 16진수 BPM (예: 'FF' = 255)
+                    const hexBpm = parseInt(obj.value, 16);
+                    if (hexBpm > 0) {
+                        currentBpm = hexBpm;
+                    }
+                } else if (obj.channel === '08') {
+                    // 채널 08: #BPMxx 헤더 참조
+                    const bpmKey = obj.value.toUpperCase();
                     if (bpmMap[bpmKey]) {
                         currentBpm = bpmMap[bpmKey];
                     }

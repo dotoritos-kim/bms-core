@@ -437,6 +437,32 @@ export function detectBMSStyle(objects: Array<{ channel: string; value: string }
     }
   }
 
+  // 채널 사용량 분석
+  const ch16Count = (channelCounts['16'] || 0) + (channelCounts['36'] || 0) + (channelCounts['56'] || 0);
+  const ch17Count = (channelCounts['17'] || 0) + (channelCounts['37'] || 0) + (channelCounts['57'] || 0);
+  const ch18Count = (channelCounts['18'] || 0) + (channelCounts['38'] || 0) + (channelCounts['58'] || 0);
+  const ch19Count = (channelCounts['19'] || 0) + (channelCounts['39'] || 0) + (channelCounts['59'] || 0);
+  const ch16_19Count = ch16Count + ch17Count + ch18Count + ch19Count;
+
+  // PMS 감지 (2P 판별보다 먼저 수행!)
+  // PMS 9K는 채널 11-15 + 22-25를 사용하며, 채널 16-19는 사용하지 않음
+  // 채널 22-25가 2P 채널과 겹치므로 PMS를 먼저 감지해야 함
+  const ch22_25Count = (channelCounts['22'] || 0) + (channelCounts['23'] || 0) +
+                       (channelCounts['24'] || 0) + (channelCounts['25'] || 0);
+
+  if (ch22_25Count > 0 && ch16_19Count === 0) {
+    // 채널 21, 26-29가 사용되면 진짜 2P (DP)일 수 있음
+    const has2PNonPMS = !!(channelCounts['21'] || channelCounts['26'] || channelCounts['27'] ||
+                          channelCounts['28'] || channelCounts['29'] ||
+                          channelCounts['41'] || channelCounts['46'] || channelCounts['47'] ||
+                          channelCounts['48'] || channelCounts['49'] ||
+                          channelCounts['61'] || channelCounts['66'] || channelCounts['67'] ||
+                          channelCounts['68'] || channelCounts['69']);
+    if (!has2PNonPMS) {
+      return { style: 'pms', isDP: false };
+    }
+  }
+
   // 2P 채널 사용 여부 확인 (21-29, 41-49, 61-69, E1-E9)
   const has2P = Object.keys(channelCounts).some(ch => {
     const firstChar = ch.charAt(0).toUpperCase();
@@ -445,23 +471,6 @@ export function detectBMSStyle(objects: Array<{ channel: string; value: string }
 
   // #PLAYER 헤더로 DP 여부 확인 (PLAYER 3 = DP)
   const isDP = has2P || playerHeader === '3';
-
-  // 채널 16, 17 사용 패턴 분석 (IIDX vs Keyboard)
-  // IIDX: 채널 16은 스크래치로 사용, 채널 18, 19가 6, 7키로 사용
-  // Keyboard: 채널 16, 17이 일반 키로 사용, 채널 18, 19가 8, 9키로 사용
-  const ch16Count = (channelCounts['16'] || 0) + (channelCounts['36'] || 0) + (channelCounts['56'] || 0);
-  const ch17Count = (channelCounts['17'] || 0) + (channelCounts['37'] || 0) + (channelCounts['57'] || 0);
-  const ch18Count = (channelCounts['18'] || 0) + (channelCounts['38'] || 0) + (channelCounts['58'] || 0);
-  const ch19Count = (channelCounts['19'] || 0) + (channelCounts['39'] || 0) + (channelCounts['59'] || 0);
-
-  // PMS 감지: 채널 22-25가 사용되고, 채널 16-19가 거의 없으면 PMS
-  const ch22_25Count = (channelCounts['22'] || 0) + (channelCounts['23'] || 0) +
-                       (channelCounts['24'] || 0) + (channelCounts['25'] || 0);
-  const ch16_19Count = ch16Count + ch17Count + ch18Count + ch19Count;
-
-  if (ch22_25Count > 0 && ch16_19Count === 0 && !isDP) {
-    return { style: 'pms', isDP: false };
-  }
 
   // IIDX 7키 감지: 채널 18, 19 (6, 7키)가 사용되면 IIDX 스타일
   // IIDX에서 채널 18, 19는 6, 7번 키로 매핑됨

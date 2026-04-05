@@ -15,8 +15,10 @@ import { BMSChart } from '../../bms/chart';
  */
 export class KeySounds {
     _map: { [id: string]: string };
-    constructor(map: { [id: string]: string }) {
+    _volumeMap: { [id: string]: number };
+    constructor(map: { [id: string]: string }, volumeMap?: { [id: string]: number }) {
         this._map = map;
+        this._volumeMap = volumeMap ?? {};
     }
 
     /**
@@ -26,6 +28,16 @@ export class KeySounds {
      */
     get(id: string): string | undefined {
         return this._map[id.toLowerCase()];
+    }
+
+    /**
+     * 지정된 ID의 키사운드 볼륨을 반환합니다 (0-100, 기본값 100).
+     * BMS #VOLWAVxx 헤더에서 파싱됩니다.
+     * @param id 두 문자로 된 키사운드 ID
+     * @returns 볼륨 (0-100)
+     */
+    getVolume(id: string): number {
+        return this._volumeMap[id.toLowerCase()] ?? 100;
     }
 
     /**
@@ -46,17 +58,35 @@ export class KeySounds {
     }
 
     /**
+     * 키사운드 ID에서 볼륨으로의 매핑을 반환합니다.
+     */
+    allVolumes() {
+        return this._volumeMap;
+    }
+
+    /**
      * BMSChart에서 새로운 Keysounds 객체를 생성합니다.
      * @param chart
      */
     static fromBMSChart(chart: BMSChart) {
         void BMSChart;
         const map: { [id: string]: string } = {};
+        const volumeMap: { [id: string]: number } = {};
         chart.headers.each(function (name, value) {
-            const match = name.match(/^wav(\S\S)$/i);
-            if (!match) return;
-            map[match[1].toLowerCase()] = value;
+            const wavMatch = name.match(/^wav(\S\S)$/i);
+            if (wavMatch) {
+                map[wavMatch[1].toLowerCase()] = value;
+                return;
+            }
+            // #VOLWAVxx yy — 키음별 볼륨 (0-100)
+            const volMatch = name.match(/^volwav(\S\S)$/i);
+            if (volMatch) {
+                const vol = parseInt(value, 10);
+                if (!isNaN(vol)) {
+                    volumeMap[volMatch[1].toLowerCase()] = Math.max(0, Math.min(100, vol));
+                }
+            }
         });
-        return new KeySounds(map);
+        return new KeySounds(map, volumeMap);
     }
 }
