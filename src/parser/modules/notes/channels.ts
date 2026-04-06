@@ -162,6 +162,45 @@ export const PMS_9K = {
   '25': '9',
 }
 
+// PMS 9K Invisible (채널 31-35, 42-45)
+export const PMS_9K_INVISIBLE = {
+  '31': '1',
+  '32': '2',
+  '33': '3',
+  '34': '4',
+  '35': '5',
+  '42': '6',
+  '43': '7',
+  '44': '8',
+  '45': '9',
+}
+
+// PMS 9K LongNote (채널 51-55, 62-65)
+export const PMS_9K_LONGNOTE = {
+  '51': '1',
+  '52': '2',
+  '53': '3',
+  '54': '4',
+  '55': '5',
+  '62': '6',
+  '63': '7',
+  '64': '8',
+  '65': '9',
+}
+
+// PMS 9K Landmine (채널 D1-D5, E2-E5)
+export const PMS_9K_LANDMINE = {
+  'D1': '1',
+  'D2': '2',
+  'D3': '3',
+  'D4': '4',
+  'D5': '5',
+  'E2': '6',
+  'E3': '7',
+  'E4': '8',
+  'E5': '9',
+}
+
 // PMS 5K (O2Jam 스타일)
 export const PMS_5K = {
   '13': '1',
@@ -392,8 +431,12 @@ export function createCombinedMapping(style: BMSStyle = 'iidx', isDP: boolean = 
       };
 
     case 'pms':
-      // PMS는 별도 처리 (9K만 지원)
-      return { ...PMS_9K };
+      return {
+        ...PMS_9K,
+        ...PMS_9K_INVISIBLE,
+        ...PMS_9K_LANDMINE,
+        ...PMS_9K_LONGNOTE,
+      };
 
     case 'iidx':
     default:
