@@ -174,6 +174,7 @@ function tickToFractionInMeasure(
   for (;;) {
     const size = timeSignatures.get(measure) ?? 1.0;
     const ticksInMeasure = Math.round(4 * size * TICKS_PER_BEAT);
+    if (ticksInMeasure <= 0) return { measure, fraction: 0 }; // guard against zero-size measures
     if (currentTick + ticksInMeasure > tick) {
       const fraction = (tick - currentTick) / ticksInMeasure;
       return { measure, fraction };
