@@ -1,5 +1,3 @@
-import DataStructure from '../../utils/dataStructure';
-
 /**
  * 노트 타입 정의
  * - playable: 플레이어가 쳐야 하는 노트 (채널 11-19, 21-29)
@@ -48,9 +46,24 @@ export interface BMSNote {
     keysoundEnd?: number;
 }
 
-export const Note = DataStructure<BMSNote>({
-    beat: 'number',
-    endBeat: DataStructure?.maybe<number>('number'),
-    column: DataStructure?.maybe<string>('string'),
-    keysound: 'string',
-});
+/**
+ * 런타임에서 BMSNote 객체의 필수 필드를 검증합니다.
+ *
+ * 과거에는 자체 `DataStructure` Façade로 검증했으나, 사용처가 내부
+ * `Notes` 컬렉션 한 곳뿐이고 필드 타입은 TypeScript로 이미 강제되므로
+ * 작은 인라인 가드로 대체합니다. 외부 API에는 영향이 없습니다.
+ */
+export function assertBMSNote(value: BMSNote): void {
+    if (typeof value.beat !== 'number') {
+        throw new Error('Error in property "beat": Value should be of type number');
+    }
+    if (value.endBeat !== undefined && value.endBeat !== null && typeof value.endBeat !== 'number') {
+        throw new Error('Error in property "endBeat": Value should be of type number');
+    }
+    if (value.column !== undefined && value.column !== null && typeof value.column !== 'string') {
+        throw new Error('Error in property "column": Value should be of type string');
+    }
+    if (typeof value.keysound !== 'string') {
+        throw new Error('Error in property "keysound": Value should be of type string');
+    }
+}
