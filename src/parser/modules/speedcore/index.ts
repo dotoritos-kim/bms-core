@@ -1,4 +1,4 @@
-import { Segment, SpeedSegment } from './segment';
+import { assertSpeedSegment, SpeedSegment } from './segment';
 
 /**
  * Speedcore는 내부적으로 사용되는 작은 라이브러리입니다.
@@ -64,7 +64,7 @@ export class Speedcore<S extends SpeedSegment = SpeedSegment> {
      * 주어진 세그먼트로 새로운 `Speedcore`를 생성합니다.
      */
     constructor(segments: S[]) {
-        segments.forEach(Segment);
+        segments.forEach(assertSpeedSegment);
         this._segments = segments;
     }
 

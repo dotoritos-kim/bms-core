@@ -1,4 +1,4 @@
-import { Note, BMSNote, NoteType } from './note';
+import { assertBMSNote, BMSNote, NoteType } from './note';
 import { invariant } from '@epic-web/invariant';
 import * as ChannelMapping from './channels';
 import { calculateLandmineDamage, detectBMSStyle, createCombinedMapping } from './channels';
@@ -26,7 +26,7 @@ export class Notes {
      * @param {BMSNote[]} notes Note 객체들의 배열
      */
     constructor(notes: BMSNote[]) {
-        notes.forEach(Note);
+        notes.forEach(assertBMSNote);
         this._notes = notes;
     }
 
