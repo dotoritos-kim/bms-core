@@ -23,6 +23,13 @@ export interface BMSWriterOptions {
   lnMode?: 'channel' | 'lnobj';
   /** LNOBJ 마커 값 (lnMode='lnobj'일 때 사용, 기본: 헤더의 lnobj 값 또는 미사용 최대 WAV ID) */
   lnObjValue?: string;
+  /**
+   * tick 데이터를 활용한 자동 해상도 계산 (기본: true)
+   * true: 각 마디의 실제 노트 tick 위치에서 최소 BMS 해상도를 동적으로 계산
+   *       → 64분 셋잇단 등 192 초과 해상도 노트도 손실 없이 출력
+   * false: resolution 옵션의 고정값만 사용 (레거시 동작)
+   */
+  autoResolution?: boolean;
 }
 
 /**
@@ -98,6 +105,8 @@ export interface EditableBMSNote extends BMSNote {
     /** 출력 채널 타입 ('invisible' → 3x/4x 채널, 'bgm' → 01 채널) */
     type: 'invisible' | 'bgm';
   }>;
+  /** BGM 채널 그룹 번호 (에디터 전용 — 시각적 레인 분리용, BMS 출력에는 영향 없음) */
+  bgmChannel?: number;
 }
 
 /**

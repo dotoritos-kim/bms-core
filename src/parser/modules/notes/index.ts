@@ -96,6 +96,13 @@ class BMSNoteBuilder {
         this._objects.forEach((object) => {
             this._handle(object);
         });
+        // BUG-P1: 미매칭 롱노트를 일반 노트로 복구 (시작만 있고 끝이 없는 LN)
+        for (const channel of Object.keys(this._activeLN)) {
+            const orphan = this._activeLN[channel];
+            delete orphan.endBeat;
+            this._notes.push(orphan);
+        }
+        this._activeLN = {};
         return new Notes(this._notes);
     }
 
@@ -138,7 +145,8 @@ class BMSNoteBuilder {
     _handleNormalNote(object: BMSObject, noteType: 'playable' | 'invisible' | 'landmine') {
         const channel = this._normalizeChannel(object.channel);
         const beat = this._getBeat(object);
-        if (object.value.toLowerCase() === this._lnObj) {
+        // BUG-P2: LNOBJ는 playable 노트에만 적용 (invisible/landmine 제외)
+        if (this._lnObj && noteType === 'playable' && object.value.toLowerCase() === this._lnObj) {
             if (this._lastNote[channel]) {
                 this._lastNote[channel].endBeat = beat;
             }

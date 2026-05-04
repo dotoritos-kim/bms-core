@@ -160,6 +160,25 @@ function quantizeFraction(fraction: number, resolution: number): number {
   return Math.round(fraction * resolution) / resolution;
 }
 
+/** 1 beat = 960 ticks (MIDI 표준) */
+const TICKS_PER_BEAT = 960;
+
+/**
+ * 0마디부터 targetMeasure 직전까지의 누적 tick 수
+ * (tickToFractionInMeasure의 역계산에 필요)
+ */
+function getTotalTicksUpToMeasure(
+  targetMeasure: number,
+  timeSignatures: Map<number, number>,
+): number {
+  let total = 0;
+  for (let m = 0; m < targetMeasure; m++) {
+    const size = timeSignatures.get(m) ?? 1.0;
+    total += Math.round(4 * size * TICKS_PER_BEAT);
+  }
+  return total;
+}
+
 /**
  * Tick 기반 fraction 계산 (부동소수점 오차 없음)
  * tick이 있는 노트에서는 이 함수로 fraction을 직접 계산
@@ -167,26 +186,25 @@ function quantizeFraction(fraction: number, resolution: number): number {
 function tickToFractionInMeasure(
   tick: number,
   timeSignatures: Map<number, number>
-): { measure: number; fraction: number } {
-  const TICKS_PER_BEAT = 960;
+): { measure: number; fraction: number; ticksInMeasure: number } {
   let currentTick = 0;
   let measure = 0;
   for (;;) {
     const size = timeSignatures.get(measure) ?? 1.0;
     const ticksInMeasure = Math.round(4 * size * TICKS_PER_BEAT);
-    if (ticksInMeasure <= 0) return { measure, fraction: 0 }; // guard against zero-size measures
+    if (ticksInMeasure <= 0) return { measure, fraction: 0, ticksInMeasure: 1 }; // guard against zero-size measures
     if (currentTick + ticksInMeasure > tick) {
       const fraction = (tick - currentTick) / ticksInMeasure;
-      return { measure, fraction };
+      return { measure, fraction, ticksInMeasure };
     }
     currentTick += ticksInMeasure;
     measure++;
-    if (measure > 9999) return { measure: 0, fraction: 0 }; // safety
+    if (measure > 9999) return { measure: 0, fraction: 0, ticksInMeasure: TICKS_PER_BEAT * 4 }; // safety
   }
 }
 
 /**
- * 분수들의 최소 분해능 계산
+ * 분수들의 최소 분해능 계산 (레거시 — tick 없는 노트용)
  */
 function findMinResolution(fractions: number[], maxResolution: number = 192): number {
   if (fractions.length === 0) return 1;
@@ -202,6 +220,24 @@ function findMinResolution(fractions: number[], maxResolution: number = 192): nu
     }
   }
 
+  return maxResolution / divisor;
+}
+
+/**
+ * Tick 배열에서 BMS 출력에 필요한 최소 해상도 계산
+ * 예: 64분 셋잇단(10ticks) → 3840/gcd(3840,10) = 3840/10 = 384
+ */
+function findMinResolutionFromTicks(
+  ticks: number[],
+  ticksInMeasure: number,
+  maxResolution: number = 3840,
+): number {
+  if (ticks.length === 0) return 1;
+  const slots = ticks.map((t) => Math.round((t / ticksInMeasure) * maxResolution));
+  let divisor = maxResolution;
+  for (const s of slots) {
+    if (s > 0) divisor = gcd(divisor, s);
+  }
   return maxResolution / divisor;
 }
 
@@ -248,28 +284,55 @@ function getNoteChannel(
 }
 
 /**
+ * 이벤트 타입 — tick이 있으면 tick 기반 해상도 계산에 사용
+ */
+type ChannelEvent = {
+  fraction: number;
+  value: string;
+  /** measure 내 tick 오프셋 (tick 데이터 있는 노트만) */
+  tickOffset?: number;
+  /** 이 마디의 총 tick 수 (tick 데이터 있는 노트만) */
+  ticksInMeasure?: number;
+};
+
+/**
  * 마디의 채널 데이터 생성
  */
 function createChannelDataForMeasure(
   measure: number,
   channel: string,
-  events: Array<{ fraction: number; value: string }>,
+  events: ChannelEvent[],
   resolution: number
 ): ChannelData | null {
   if (events.length === 0) return null;
 
-  // 분수들의 최소 분해능 계산
-  const fractions = events.map((e) => e.fraction);
-  const minRes = findMinResolution(fractions, resolution);
+  // tick 데이터가 모든 이벤트에 있으면 tick 기반 최소 해상도 계산 (손실 없음)
+  const tickEvents = events.filter(
+    (e) => e.tickOffset !== undefined && e.ticksInMeasure !== undefined
+  );
+  let minRes: number;
+  if (tickEvents.length === events.length && tickEvents[0].ticksInMeasure! > 0) {
+    const ticks = tickEvents.map((e) => e.tickOffset!);
+    const ticksInMeasure = tickEvents[0].ticksInMeasure!;
+    minRes = findMinResolutionFromTicks(ticks, ticksInMeasure);
+  } else {
+    // 레거시 경로: fraction 기반 (최대 192)
+    const fractions = events.map((e) => e.fraction);
+    minRes = findMinResolution(fractions, resolution);
+  }
 
   // 데이터 배열 생성 (각 슬롯은 2문자)
   const dataArray: string[] = new Array(minRes).fill('00');
 
   for (const event of events) {
-    const slot = Math.round(event.fraction * minRes);
+    let slot: number;
+    if (event.tickOffset !== undefined && event.ticksInMeasure !== undefined && event.ticksInMeasure > 0) {
+      // tick 기반 슬롯 계산 (정확)
+      slot = Math.round((event.tickOffset / event.ticksInMeasure) * minRes);
+    } else {
+      slot = Math.round(event.fraction * minRes);
+    }
     if (slot < minRes) {
-      // 여러 이벤트가 같은 슬롯에 있으면 마지막 값 사용
-      // (BGM 채널은 예외로 중복 허용되지만 여기서는 단순화)
       dataArray[slot] = event.value;
     }
   }
@@ -291,15 +354,21 @@ function createChannelDataForMeasure(
  * BGM 채널(01)에서 동시에 재생되는 키음을 각각 별도의 #xxx01: 라인으로 출력하기 위함
  */
 function splitOverlappingEvents(
-  events: Array<{ fraction: number; value: string }>,
+  events: ChannelEvent[],
   resolution: number
-): Array<Array<{ fraction: number; value: string }>> {
+): Array<ChannelEvent[]> {
   if (events.length === 0) return [];
 
   // 슬롯별로 이벤트 그룹화
-  const slotMap = new Map<number, Array<{ fraction: number; value: string }>>();
+  const slotMap = new Map<number, ChannelEvent[]>();
   for (const event of events) {
-    const slot = Math.round(quantizeFraction(event.fraction, resolution) * resolution);
+    let slot: number;
+    if (event.tickOffset !== undefined && event.ticksInMeasure !== undefined && event.ticksInMeasure > 0) {
+      // tick 기반 임시 슬롯 (충돌 감지용, 최대 3840 기준)
+      slot = Math.round((event.tickOffset / event.ticksInMeasure) * 3840);
+    } else {
+      slot = Math.round(quantizeFraction(event.fraction, resolution) * resolution);
+    }
     if (!slotMap.has(slot)) {
       slotMap.set(slot, []);
     }
@@ -314,7 +383,7 @@ function splitOverlappingEvents(
   if (maxOverlap <= 1) return [events];
 
   // 레이어별로 분배: 각 슬롯의 n번째 이벤트를 n번째 레이어에 배치
-  const layers: Array<Array<{ fraction: number; value: string }>> = [];
+  const layers: Array<ChannelEvent[]> = [];
   for (const group of slotMap.values()) {
     for (let i = 0; i < group.length; i++) {
       if (!layers[i]) layers[i] = [];
@@ -340,7 +409,7 @@ export function writeNoteChannels(
   const channelDataList: ChannelData[] = [];
 
   // 마디별, 채널별로 노트 그룹화
-  const measureChannelMap = new Map<number, Map<string, Array<{ fraction: number; value: string }>>>();
+  const measureChannelMap = new Map<number, Map<string, ChannelEvent[]>>();
 
   for (const note of notes) {
     const channel = getNoteChannel(note, mapping, lnMode);
@@ -352,7 +421,14 @@ export function writeNoteChannels(
       : null;
     const noteMeasure = tickPos?.measure ?? note.measure;
     const noteFraction = tickPos?.fraction ?? note.fraction;
-    const quantizedFraction = quantizeFraction(noteFraction, resolution);
+    // tick 데이터 없으면 레거시 양자화 (192 기준)
+    const quantizedFraction = tickPos ? noteFraction : quantizeFraction(noteFraction, resolution);
+
+    // tick 기반 이벤트 추가 정보
+    const tickOffset = tickPos
+      ? (note.tick! - getTotalTicksUpToMeasure(noteMeasure, timeSignatures))
+      : undefined;
+    const ticksInMeasureForNote = tickPos?.ticksInMeasure;
 
     // 마디 맵 가져오기/생성
     if (!measureChannelMap.has(noteMeasure)) {
@@ -370,6 +446,8 @@ export function writeNoteChannels(
     events.push({
       fraction: quantizedFraction,
       value: note.keysound.toUpperCase().padStart(2, '0').slice(0, 2),
+      tickOffset,
+      ticksInMeasure: ticksInMeasureForNote,
     });
 
     // 멀티 키음 레이어 출력 (additionalKeysounds)
@@ -393,6 +471,8 @@ export function writeNoteChannels(
         layerChannelMap.get(layerChannel)!.push({
           fraction: quantizedFraction,
           value: layer.keysound.toUpperCase().padStart(2, '0').slice(0, 2),
+          tickOffset,
+          ticksInMeasure: ticksInMeasureForNote,
         });
       }
     }
@@ -403,7 +483,11 @@ export function writeNoteChannels(
         ? tickToFractionInMeasure(note.endTick, timeSignatures)
         : beatToMeasureFraction(note.endBeat, timeSignatures);
       const endMeasure = endPos.measure;
-      const endQuantized = quantizeFraction(endPos.fraction, resolution);
+      const endFraction = note.endTick !== undefined ? endPos.fraction : quantizeFraction(endPos.fraction, resolution);
+      const endTickOffset = note.endTick !== undefined
+        ? (note.endTick - getTotalTicksUpToMeasure(endMeasure, timeSignatures))
+        : undefined;
+      const endTicksInMeasure = note.endTick !== undefined ? (endPos as ReturnType<typeof tickToFractionInMeasure>).ticksInMeasure : undefined;
 
       if (lnMode === 'lnobj' && lnObjValue && note.column) {
         // LNOBJ 모드: playable 채널에 LNOBJ 마커를 끝 위치에 기록
@@ -417,8 +501,10 @@ export function writeNoteChannels(
             endChMap.set(playableChannel, []);
           }
           endChMap.get(playableChannel)!.push({
-            fraction: endQuantized,
+            fraction: endFraction,
             value: lnObjValue.toUpperCase().padStart(2, '0').slice(0, 2),
+            tickOffset: endTickOffset,
+            ticksInMeasure: endTicksInMeasure,
           });
         }
       } else {
@@ -434,8 +520,10 @@ export function writeNoteChannels(
             endChMap.set(lnChannel, []);
           }
           endChMap.get(lnChannel)!.push({
-            fraction: endQuantized,
+            fraction: endFraction,
             value: note.keysound.toUpperCase().padStart(2, '0').slice(0, 2),
+            tickOffset: endTickOffset,
+            ticksInMeasure: endTicksInMeasure,
           });
         }
       }

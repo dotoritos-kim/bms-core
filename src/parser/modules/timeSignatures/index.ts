@@ -37,7 +37,8 @@ export class TimeSignatures {
      *  0.75 크기는 3/4 또는 6/8 박자를 나타냅니다.
      */
     set(measure: number, value: number) {
-        this._values[measure] = value;
+        // BUG-P4: 0 이하 크기는 무한루프/0-나눗셈 유발 → 최솟값 보장
+        this._values[measure] = value > 0 ? value : 1;
     }
 
     /**

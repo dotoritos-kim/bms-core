@@ -313,6 +313,9 @@ export class BMSWriter {
       }
     }
 
+    // BGM 노트에 자동 채널 그룹 할당 (같은 beat의 BGM 노트를 서로 다른 채널로 분리)
+    BMSWriter.assignBgmChannels(notes);
+
     // 멀티 키음 그룹화: 같은 beat+column에 있는 invisible/BGM 노트를 playable 노트의 additionalKeysounds로 병합
     const groupedNotes = BMSWriter.groupMultiKeysounds(notes);
 
@@ -371,6 +374,31 @@ export class BMSWriter {
       noteType,
       channel: obj.channel,
     };
+  }
+
+  /**
+   * BGM 노트에 자동 채널 그룹 번호 할당
+   * 같은 tick의 BGM 노트를 서로 다른 채널로 분리하여 에디터에서 멀티 레인 표시 가능
+   */
+  private static assignBgmChannels(notes: EditableBMSNote[]): void {
+    // tick별로 BGM 노트를 그룹핑
+    const tickGroups = new Map<number, EditableBMSNote[]>();
+    for (const note of notes) {
+      if (note.noteType !== 'bgm') continue;
+      const group = tickGroups.get(note.tick);
+      if (group) {
+        group.push(note);
+      } else {
+        tickGroups.set(note.tick, [note]);
+      }
+    }
+
+    // 각 그룹 내에서 순차 채널 번호 할당
+    for (const group of tickGroups.values()) {
+      for (let i = 0; i < group.length; i++) {
+        group[i].bgmChannel = i;
+      }
+    }
   }
 
   /**
