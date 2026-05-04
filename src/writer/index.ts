@@ -542,9 +542,6 @@ export class BMSWriter {
     const originalNoteIds = new Set(original.notes.map((n) => n.id));
     const modifiedNoteIds = new Set(modified.notes.map((n) => n.id));
     const originalNoteMap = new Map(original.notes.map((n) => [n.id, n]));
-    // Note: modifiedNoteMap currently unused, keeping for potential future use
-    const _modifiedNoteMap = new Map(modified.notes.map((n) => [n.id, n]));
-    void _modifiedNoteMap;
 
     // 추가된 노트
     for (const note of modified.notes) {
