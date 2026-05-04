@@ -275,11 +275,14 @@ export function compile(text: string, options?: Partial<BMSCompileOptions>) {
     result.wavStats.total = wavHeadersCollected;
     result.wavStats.inSkippedBlocks = wavHeadersInSkippedBlocks;
 
-    // 디버그 로그 출력
-    console.log(`[BMS Compiler] Parsed ${lineCount} lines: ${result.headerSentences} headers, ${result.channelSentences} channels, ${result.controlSentences} control`);
-    console.log(`[BMS Compiler] WAV/BMP headers: ${wavHeadersCollected} total (${wavHeadersInSkippedBlocks} from skipped #RANDOM/#SWITCH blocks)`);
-    if (sampleWavHeaders.length > 0) {
-        console.log(`[BMS Compiler] Sample WAV headers: [${sampleWavHeaders.join(', ')}]`);
+    // 디버그 로그 출력 (logger 옵션이 명시적으로 주어진 경우에만 출력)
+    if (options.logger) {
+        const log = options.logger.info ?? (() => undefined);
+        log(`[BMS Compiler] Parsed ${lineCount} lines: ${result.headerSentences} headers, ${result.channelSentences} channels, ${result.controlSentences} control`);
+        log(`[BMS Compiler] WAV/BMP headers: ${wavHeadersCollected} total (${wavHeadersInSkippedBlocks} from skipped #RANDOM/#SWITCH blocks)`);
+        if (sampleWavHeaders.length > 0) {
+            log(`[BMS Compiler] Sample WAV headers: [${sampleWavHeaders.join(', ')}]`);
+        }
     }
 
     return result;
@@ -338,4 +341,13 @@ export interface BMSCompileOptions {
      *  설정하면 모든 #SWITCH 블록이 이 값을 사용합니다.
      */
     setswitch?: number;
+
+    /** 디버그 로거 (선택).
+     *  주어진 경우 컴파일 통계가 `logger.info`로 출력됩니다.
+     *  주어지지 않으면 라이브러리는 어떠한 콘솔 출력도 하지 않습니다.
+     */
+    logger?: {
+        info?: (message: string) => void;
+        warn?: (message: string) => void;
+    };
 }
