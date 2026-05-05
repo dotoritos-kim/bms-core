@@ -3,6 +3,10 @@
 import { match } from '../../utils/match';
 import { BMSChart } from '../../bms/chart';
 import { BMSObject } from '../../bms/objects';
+import { ControlFlowState } from './controlFlow';
+import type { CompileResult } from './types';
+
+export type { CompileResult, CompileWarning, CompileStats, WavStats, WarningCode } from './types';
 
 const matchers = {
     bms: {
@@ -56,7 +60,7 @@ const matchers = {
  * @param text BMS 노트차트
  * @param options 추가 파서 옵션
  */
-export function compile(text: string, options?: Partial<BMSCompileOptions>) {
+export function compile(text: string, options?: Partial<BMSCompileOptions>): CompileResult {
     options = options || {};
 
     const chart = new BMSChart();
@@ -69,22 +73,10 @@ export function compile(text: string, options?: Partial<BMSCompileOptions>) {
 
     const matcher = (options.format && matchers[options.format]) || matchers.bms;
 
-    // 랜덤 값 스택 (각 #RANDOM 블록의 현재 랜덤 값)
-    const randomStack: number[] = [];
-    // 스킵 상태 스택 (현재 블록을 스킵할지 여부)
-    const skipStack = [false];
-    // 매칭 여부 스택 (#IF/#ELSEIF 중 하나라도 매칭되었는지 추적)
-    const matchedStack = [false];
+    // 제어 흐름 상태 머신 (P4: 4개 스택을 캡슐화)
+    const cf = new ControlFlowState();
     // #SETRANDOM 고정값 (테스트용)
     const setRandomValue = options.setrandom;
-
-    // #SWITCH 제어 흐름용 스택
-    interface SwitchState {
-        value: number;      // 스위치 값
-        matched: boolean;   // CASE가 매칭되었는지
-        skipping: boolean;  // SKIP 이후 ENDSW까지 스킵
-    }
-    const switchStack: SwitchState[] = [];
     // #SETSWITCH 고정값 (테스트용)
     const setSwitchValue = options.setswitch;
 
@@ -93,7 +85,7 @@ export function compile(text: string, options?: Partial<BMSCompileOptions>) {
     let wavHeadersInSkippedBlocks = 0;
     const sampleWavHeaders: string[] = [];
 
-    const result = {
+    const result: CompileResult = {
         headerSentences: 0,
         channelSentences: 0,
         controlSentences: 0,
@@ -108,7 +100,7 @@ export function compile(text: string, options?: Partial<BMSCompileOptions>) {
         /**
          * 컴파일 중 발견된 경고
          */
-        warnings: [] as { lineNumber: number; message: string }[],
+        warnings: [],
 
         /**
          * WAV 헤더 수집 통계 (디버그)
@@ -130,7 +122,7 @@ export function compile(text: string, options?: Partial<BMSCompileOptions>) {
                 result.controlSentences += 1;
                 // #SETRANDOM이 설정되어 있으면 고정값 사용
                 const value = setRandomValue !== undefined ? setRandomValue : rng(+m[1]);
-                randomStack.push(value);
+                cf.beginRandom(value);
             })
             .when(matcher.setrandom, function () {
                 // #SETRANDOM은 다음 #RANDOM의 값을 고정 (이미 options에서 처리)
@@ -138,47 +130,29 @@ export function compile(text: string, options?: Partial<BMSCompileOptions>) {
             })
             .when(matcher.endrandom, function () {
                 result.controlSentences += 1;
-                randomStack.pop();
+                cf.endRandom();
             })
             .when(matcher.if, function (m) {
                 result.controlSentences += 1;
-                const randomValue = randomStack[randomStack.length - 1];
-                const matches = randomValue === +m[1];
-                skipStack.push(!matches);
-                matchedStack.push(matches);
+                cf.beginIf(+m[1]);
             })
             .when(matcher.elseif, function (m) {
                 result.controlSentences += 1;
-                const alreadyMatched = matchedStack[matchedStack.length - 1];
-                if (alreadyMatched) {
-                    // 이미 매칭된 분기가 있으면 스킵
-                    skipStack[skipStack.length - 1] = true;
-                } else {
-                    // 아직 매칭된 분기가 없으면 새로운 조건 평가
-                    const randomValue = randomStack[randomStack.length - 1];
-                    const matches = randomValue === +m[1];
-                    skipStack[skipStack.length - 1] = !matches;
-                    if (matches) {
-                        matchedStack[matchedStack.length - 1] = true;
-                    }
-                }
+                cf.beginElseIf(+m[1]);
             })
             .when(matcher.else, function () {
                 result.controlSentences += 1;
-                const alreadyMatched = matchedStack[matchedStack.length - 1];
-                // 이미 매칭된 분기가 있으면 스킵, 없으면 실행
-                skipStack[skipStack.length - 1] = alreadyMatched;
+                cf.beginElse();
             })
             .when(matcher.endif, function () {
                 result.controlSentences += 1;
-                skipStack.pop();
-                matchedStack.pop();
+                cf.endIf();
             })
             // #SWITCH 제어 흐름
             .when(matcher.switch, function (m) {
                 result.controlSentences += 1;
                 const value = setSwitchValue !== undefined ? setSwitchValue : rng(+m[1]);
-                switchStack.push({ value, matched: false, skipping: false });
+                cf.beginSwitch(value);
             })
             .when(matcher.setswitch, function () {
                 // #SETSWITCH는 options에서 처리됨
@@ -186,57 +160,25 @@ export function compile(text: string, options?: Partial<BMSCompileOptions>) {
             })
             .when(matcher.case, function (m) {
                 result.controlSentences += 1;
-                const current = switchStack[switchStack.length - 1];
-                if (current) {
-                    if (current.skipping || current.matched) {
-                        // SKIP 이후거나 이미 매칭된 경우 스킵
-                        skipStack[skipStack.length - 1] = true;
-                    } else if (current.value === +m[1]) {
-                        // 매칭됨 - 실행
-                        current.matched = true;
-                        skipStack[skipStack.length - 1] = false;
-                    } else {
-                        // 매칭 안됨 - 스킵
-                        skipStack[skipStack.length - 1] = true;
-                    }
-                }
+                cf.beginCase(+m[1]);
             })
             .when(matcher.skip, function () {
                 result.controlSentences += 1;
-                const current = switchStack[switchStack.length - 1];
-                if (current) {
-                    // SKIP 이후 ENDSW까지 모든 코드 스킵
-                    current.skipping = true;
-                    skipStack[skipStack.length - 1] = true;
-                }
+                cf.beginSkip();
             })
             .when(matcher.def, function () {
                 result.controlSentences += 1;
-                const current = switchStack[switchStack.length - 1];
-                if (current) {
-                    if (current.skipping || current.matched) {
-                        // SKIP 이후거나 이미 매칭된 경우 스킵
-                        skipStack[skipStack.length - 1] = true;
-                    } else {
-                        // 아무 CASE도 매칭 안된 경우 실행
-                        skipStack[skipStack.length - 1] = false;
-                    }
-                }
+                cf.beginDef();
             })
             .when(matcher.endsw, function () {
                 result.controlSentences += 1;
-                switchStack.pop();
-                // 스위치 종료 후 정상 실행 재개
-                if (skipStack.length > 1 && switchStack.length === 0) {
-                    // 최상위 스킵 상태로 복원
-                    skipStack[skipStack.length - 1] = false;
-                }
+                cf.endSwitch();
             })
             .else(function () {
                 flow = false;
             });
         if (flow) return;
-        const skipped = skipStack[skipStack.length - 1];
+        const skipped = cf.isSkipped();
         match(text)
             .when(matcher.timeSignature, function (m) {
                 result.channelSentences += 1;
@@ -267,7 +209,7 @@ export function compile(text: string, options?: Partial<BMSCompileOptions>) {
                 }
             })
             .else(function () {
-                warn(lineNumber, '잘못된 명령');
+                warn(lineNumber, '잘못된 명령', 'INVALID_DIRECTIVE');
             });
     });
 
@@ -304,10 +246,11 @@ export function compile(text: string, options?: Partial<BMSCompileOptions>) {
         }
     }
 
-    function warn(lineNumber: number, message: string) {
+    function warn(lineNumber: number, message: string, code: 'INVALID_DIRECTIVE') {
         result.warnings.push({
             lineNumber: lineNumber,
             message: message,
+            code: code,
         });
     }
 }
