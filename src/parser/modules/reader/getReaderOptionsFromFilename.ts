@@ -13,5 +13,8 @@ export function getReaderOptionsFromFilename(filename: string) {
     if (filename.match(/\.utf8\.\w+$/i)) {
         forceEncoding = 'UTF-8';
     }
+    if (filename.match(/\.win1251\.\w+$/i)) {
+        forceEncoding = 'windows-1251';
+    }
     return { forceEncoding };
 }

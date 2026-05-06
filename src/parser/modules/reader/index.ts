@@ -14,8 +14,17 @@ import { ReaderOptions } from './types';
  * - GB18030: 중국어 간체 (유니코드 호환)
  * - Big5: 중국어 번체 (대만/홍콩)
  * - EUC-KR: 한국어
+ * - Windows-1251: 러시아어/키릴 문자 (구 BMS 차트 호환)
  */
-const ENCODINGS_TO_TRY = ['utf-8', 'shift-jis', 'gbk', 'gb18030', 'big5', 'euc-kr'] as const;
+const ENCODINGS_TO_TRY = [
+    'utf-8',
+    'shift-jis',
+    'gbk',
+    'gb18030',
+    'big5',
+    'euc-kr',
+    'windows-1251',
+] as const;
 
 /**
  * BOM(Byte Order Mark)을 확인하여 인코딩을 감지합니다.
