@@ -1,26 +1,26 @@
 /**
- *   - Reader: Buffer에서 BMS 파일을 읽고, 문자 집합을 감지하여
- *     해당 문자 집합으로 버퍼를 String으로 디코딩합니다.
- *   - Compiler: String에서 BMS 소스를 읽어들여
- *     BMSChart로 변환하여 BMS 노트차트의 내부 표현을 만듭니다.
+ *   - Reader: reads a BMS file from a Buffer, detects its character
+ *     encoding, and decodes the buffer into a String using that encoding.
+ *   - Compiler: ingests a BMS source String and converts it into a
+ *     BMSChart, producing the in-memory representation of the chart.
  *
- *   - BMSChart: BMSHeaders, BMSObjects, TimeSignatures로 구성됩니다.
- *   - BMSHeaders: BMS 파일의 헤더 문장을 나타냅니다.
- *   - BMSObjects: BMS 파일의 객체들을 나타냅니다.
- *   - BMSObject: 개별 객체를 나타냅니다.
+ *   - BMSChart: composed of BMSHeaders, BMSObjects, and TimeSignatures.
+ *   - BMSHeaders: represents the header statements of a BMS file.
+ *   - BMSObjects: represents the object collection of a BMS file.
+ *   - BMSObject: represents an individual object.
  *
- *   - TimeSignatures: 악보의 박자 모음을 나타내며 마디 번호와 분수를
- *     비트 번호로 변환할 수 있습니다.
- *   - Timing: 악보의 타이밍 정보를 나타내며, 음악적 시간(박자)과
- *     메트릭 시간(초) 간 변환을 제공합니다.
- *   - SongInfo: 제목, 아티스트, 장르 등 기본 곡 정보를 나타냅니다.
- *   - Notes: 노트차트 내의 사운드 객체를 나타냅니다.
- *   - Keysounds: 키사운드 ID와 파일 이름 간의 매핑을 나타냅니다.
- *   - Positioning: 박자와 게임 내 위치 간의 매핑을 나타냅니다.
- *     일부 리듬 게임은 박자당 스크롤 양을 조정할 수 있습니다.
- *   - Spacing: 박자와 노트 간격 간의 매핑을 나타냅니다.
- *     일부 리듬 게임은 노트 간격(HI-SPEED)을 동적으로 조정할 수 있습니다.
- *   - Speedcore: 선형 애니메이션을 나타냅니다.
+ *   - TimeSignatures: represents the chart's time-signature collection and
+ *     converts (measure number, fraction) pairs to a beat number.
+ *   - Timing: represents the chart's timing data and converts between
+ *     musical time (beats) and metric time (seconds).
+ *   - SongInfo: holds basic song metadata (title, artist, genre, etc.).
+ *   - Notes: represents the sound objects within the chart.
+ *   - Keysounds: maps keysound IDs to their file names.
+ *   - Positioning: maps beats to in-game positions. Some rhythm games
+ *     adjust the scroll amount per beat.
+ *   - Spacing: maps beats to note spacing. Some rhythm games dynamically
+ *     change note spacing (HI-SPEED).
+ *   - Speedcore: represents a linear animation.
  */
 
 import * as Reader from './modules/reader';
@@ -37,10 +37,10 @@ export class BMSParser {
     chart: BMSChart | null = null;
 
     /**
-     * URL에서 BMS 파일을 가져와 읽습니다.
-     * @param url - BMS 파일이 위치한 URL
-     * @param fetchOptions - fetch 요청에 사용될 옵션
-     * @returns BMS 파일 내용 문자열
+     * Fetches and reads a BMS file from a URL.
+     * @param url - URL of the BMS file
+     * @param fetchOptions - options forwarded to `fetch`
+     * @returns the decoded BMS file contents as a string
      */
     async fetchFromUrl(url: string, fetchOptions?: RequestInit): Promise<string> {
         const response = await fetch(url, fetchOptions);
@@ -52,18 +52,18 @@ export class BMSParser {
     }
 
     /**
-     * BMS 파일 버퍼를 읽고 문자열로 변환합니다.
-     * @param buffer - BMS 파일 버퍼 (ArrayBuffer 또는 Uint8Array)
-     * @returns BMS 파일 내용 문자열
+     * Reads a BMS file buffer and decodes it into a string.
+     * @param buffer - BMS file buffer (ArrayBuffer or Uint8Array)
+     * @returns the decoded BMS file contents as a string
      */
     async readBuffer(buffer: ArrayBuffer | Uint8Array): Promise<string> {
         return await Reader.readAsync(buffer);
     }
 
     /**
-     * BMS 문자열을 BMSChart 구조로 컴파일합니다.
-     * @param bmsString - BMS 파일 내용 문자열
-     * @returns 컴파일된 BMSChart
+     * Compiles a BMS source string into a BMSChart structure.
+     * @param bmsString - BMS file contents as a string
+     * @returns the compiled BMSChart
      */
     compileString(bmsString: string): BMSChart {
         this.chart = Compiler.compile(bmsString).chart;
@@ -71,8 +71,8 @@ export class BMSParser {
     }
 
     /**
-     * BMSChart에서 제목, 아티스트, 장르 등 곡 정보를 추출합니다.
-     * @returns 곡 정보를 담고 있는 객체
+     * Extracts song metadata (title, artist, genre, etc.) from the BMSChart.
+     * @returns the song info object
      */
     getSongInfo(): SongInfo | null {
         if (!this.chart) return null;
@@ -80,8 +80,8 @@ export class BMSParser {
     }
 
     /**
-     * 비트와 초 간 변환을 위한 타이밍 정보를 추출합니다.
-     * @returns 비트에서 초로 변환을 관리하는 Timing 객체
+     * Extracts timing data needed to convert between beats and seconds.
+     * @returns the Timing object that manages beat-to-second conversion
      */
     getTiming(): Timing | null {
         if (!this.chart) return null;
@@ -89,8 +89,8 @@ export class BMSParser {
     }
 
     /**
-     * 게임 내 위치 변환을 위한 포지셔닝 정보를 추출합니다.
-     * @returns 비트에서 게임 내 위치로 변환을 관리하는 Positioning 객체
+     * Extracts positioning data for converting beats to in-game positions.
+     * @returns the Positioning object that manages beat-to-position conversion
      */
     getPositioning(): Positioning | null {
         if (!this.chart) return null;
@@ -98,8 +98,8 @@ export class BMSParser {
     }
 
     /**
-     * BMSChart에서 노트 정보를 추출합니다.
-     * @returns 파싱된 노트를 담고 있는 Notes 객체
+     * Extracts note data from the BMSChart.
+     * @returns the Notes object containing parsed notes
      */
     getNotes(): Notes | null {
         if (!this.chart) return null;
@@ -107,8 +107,8 @@ export class BMSParser {
     }
 
     /**
-     * 키음을 반환합니다.
-     * @returns KeySounds 객체
+     * Returns the keysound mapping.
+     * @returns the KeySounds object
      */
     getKeySounds(): KeySounds | null {
         if (!this.chart) return null;
@@ -117,10 +117,10 @@ export class BMSParser {
     calculateTotalPlayTime(): number {
         if (!this.chart) return 0;
 
-        // Timing 클래스에 위임하여 SSoT 유지 (M1)
+        // Delegate to Timing to keep the SSoT (M1).
         const timing = Timing.fromBMSChart(this.chart);
 
-        // 마지막 노트 beat 계산 (채널 01/02/03/08/09 포함 전체 오브젝트 기준)
+        // Compute the final note's beat across every object (channels 01/02/03/08/09 included).
         const objects = this.chart.objects.allSorted();
         if (objects.length === 0) return 0;
 

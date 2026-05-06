@@ -1,12 +1,12 @@
 /**
- * BMSObjects는 BMS 노트차트 내의 객체 모음을 보유합니다.
+ * BMSObjects holds the collection of objects within a BMS chart.
  */
 export class BMSObjects {
     private _objects: BMSObject[];
     /**
-     * 중복 검사 캐시: `"channel:measure:fraction"` → _objects 배열 인덱스
-     * BGM 채널(01)은 중복 허용이므로 캐시하지 않습니다.
-     * 성능: add 의 중복 탐색을 O(n) → O(1) 으로 개선 (M2)
+     * Dedup cache: `"channel:measure:fraction"` → index in `_objects`.
+     * The BGM channel (01) allows duplicates, so it is never cached.
+     * Performance: turns `add`'s duplicate scan from O(n) into O(1) (M2).
      */
     private _dedup: Map<string, number>;
 
@@ -16,17 +16,17 @@ export class BMSObjects {
     }
 
     /**
-     * 중복 검사 키 생성 (BGM 채널 제외)
+     * Builds the dedup key (excludes the BGM channel).
      */
     private static _key(obj: BMSObject): string {
         return `${obj.channel}:${obj.measure}:${obj.fraction}`;
     }
 
     /**
-     * 새 객체를 이 컬렉션에 추가합니다.
-     * 동일한 채널과 위치에 객체가 이미 존재하는 경우,
-     * 해당 객체는 교체됩니다 (자동 키사운드 트랙 제외).
-     * @param object 추가할 객체
+     * Adds a new object to this collection. If an object already exists at
+     * the same channel and position it is replaced — except for the
+     * auto-keysound track.
+     * @param object the object to add
      */
     add(object: BMSObject) {
         if (object.channel !== '01') {
@@ -42,14 +42,14 @@ export class BMSObjects {
     }
 
     /**
-     * 모든 객체의 배열을 반환합니다.
+     * Returns an array of every object.
      */
     all() {
         return this._objects.slice();
     }
 
     /**
-     * 모든 객체의 정렬된 배열을 반환합니다.
+     * Returns every object as a time-sorted array.
      */
     allSorted() {
         const list = this.all();
@@ -60,22 +60,21 @@ export class BMSObjects {
     }
 }
 
-/** {BMSChart} 내의 객체 */
+/** An object within a {BMSChart}. */
 export interface BMSObject {
-    /** 이 객체의 원시 두 문자 BMS 채널 */
+    /** Raw two-character BMS channel of this object. */
     channel: string;
 
-    /** 마디 번호, 0부터 시작 (`#000`에 해당) */
+    /** Measure number, 0-indexed (corresponds to `#000`). */
     measure: number;
 
     /**
-     * 마디 내의 분수 위치로,
-     * 0(포함)에서 1(미포함)까지의 범위를 가집니다.
-     * 0은 객체가 마디의 시작에 있음을 의미하며,
-     * 1은 객체가 마디의 끝에 있음을 의미합니다.
+     * Fractional position within the measure, in the half-open range
+     * [0, 1). 0 means the object sits at the start of the measure;
+     * values approaching 1 sit near its end.
      */
     fraction: number;
 
-    /** BMS 객체의 원시 값 */
+    /** Raw value of the BMS object. */
     value: string;
 }

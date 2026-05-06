@@ -1,18 +1,18 @@
 /**
- * BMSHeader는 BMS 파일의 헤더 정보를 보유하며,
- * `#TITLE`, `#ARTIST`, `#BPM` 등과 같은 정보를 포함합니다.
+ * BMSHeaders holds the header information of a BMS file, including fields
+ * such as `#TITLE`, `#ARTIST`, and `#BPM`.
  *
- * `get()` 메서드를 사용하여 헤더를 조회할 수 있습니다:
+ * Use `get()` to look up a header value:
  *
  * ```js
  * chart.headers.get('title');
  * ```
  *
- * `#SUBTITLE`과 같이 여러 값을 포함할 수 있는 헤더 필드의 경우, `getAll()`을 사용하여
- * 모든 값을 가져올 수 있습니다:
+ * For header fields that may have multiple values (e.g. `#SUBTITLE`),
+ * use `getAll()` to retrieve every value:
  *
  * ```js
- * chart.headers.getAll()
+ * chart.headers.getAll('subtitle');
  * ```
  */
 export class BMSHeaders {
@@ -25,8 +25,8 @@ export class BMSHeaders {
     }
 
     /**
-     * 콜백 함수를 사용하여 각 헤더 필드를 순회합니다.
-     * @param callback 각 헤더 필드에 대해 호출되는 함수
+     * Iterates over every header field via a callback.
+     * @param callback function invoked for each (key, value) pair
      */
     each(callback: (key: string, value: string) => void) {
         for (const i in this._data) {
@@ -35,27 +35,27 @@ export class BMSHeaders {
     }
 
     /**
-     * 헤더 필드의 최신 값을 가져옵니다.
-     * @param name 필드 이름
-     * @return 필드의 최신 값
+     * Returns the latest value of a header field.
+     * @param name field name
+     * @return the latest value of the field
      */
     get(name: string): string | undefined {
         return this._data[name.toLowerCase()];
     }
 
     /**
-     * 헤더 필드의 모든 값을 가져옵니다.
-     * 해당 메서드는 헤더 필드가 여러 번 지정될 때 유용합니다.
-     * @param name 필드 이름
+     * Returns every value of a header field. Useful when the field has been
+     * specified multiple times.
+     * @param name field name
      */
     getAll(name: string): string[] | undefined {
         return this._dataAll[name.toLowerCase()];
     }
 
     /**
-     * 헤더 필드의 값을 설정합니다.
-     * @param name 필드 이름
-     * @param value 필드 값
+     * Sets the value of a header field.
+     * @param name field name
+     * @param value field value
      */
     set(name: string, value: string) {
         const key = name.toLowerCase();
