@@ -3,9 +3,23 @@
  */
 export class BMSObjects {
     private _objects: BMSObject[];
+    /**
+     * 중복 검사 캐시: `"channel:measure:fraction"` → _objects 배열 인덱스
+     * BGM 채널(01)은 중복 허용이므로 캐시하지 않습니다.
+     * 성능: add 의 중복 탐색을 O(n) → O(1) 으로 개선 (M2)
+     */
+    private _dedup: Map<string, number>;
 
     constructor() {
         this._objects = [];
+        this._dedup = new Map();
+    }
+
+    /**
+     * 중복 검사 키 생성 (BGM 채널 제외)
+     */
+    private static _key(obj: BMSObject): string {
+        return `${obj.channel}:${obj.measure}:${obj.fraction}`;
     }
 
     /**
@@ -16,13 +30,13 @@ export class BMSObjects {
      */
     add(object: BMSObject) {
         if (object.channel !== '01') {
-            for (let i = 0; i < this._objects.length; i++) {
-                const test = this._objects[i];
-                if (test.channel === object.channel && test.measure === object.measure && test.fraction === object.fraction) {
-                    this._objects[i] = object;
-                    return;
-                }
+            const key = BMSObjects._key(object);
+            const existingIndex = this._dedup.get(key);
+            if (existingIndex !== undefined) {
+                this._objects[existingIndex] = object;
+                return;
             }
+            this._dedup.set(key, this._objects.length);
         }
         this._objects.push(object);
     }
