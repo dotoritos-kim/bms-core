@@ -76,10 +76,22 @@ export class Speedcore<S extends SpeedSegment = SpeedSegment> {
     }
 
     _segmentAt(targetFn: (segment: S) => number, position: number): S {
-        for (let i = 0; i < this._segments.length; i++) {
-            if (!this._reached(i + 1, targetFn, position)) return this._segments[i];
+        // 이진 탐색으로 O(log n) 탐색 (M3)
+        // 불변식: _segments 는 targetFn 기준 오름차순으로 삽입됨
+        let lo = 0;
+        let hi = this._segments.length - 1;
+        // 마지막으로 _reached 조건을 만족하는 인덱스를 찾는다
+        let result = 0;
+        while (lo <= hi) {
+            const mid = (lo + hi) >>> 1;
+            if (this._reached(mid, targetFn, position)) {
+                result = mid;
+                lo = mid + 1;
+            } else {
+                hi = mid - 1;
+            }
         }
-        throw new Error('기준에 맞는 세그먼트를 찾을 수 없습니다 (이 오류는 발생하지 않아야 합니다)!');
+        return this._segments[result];
     }
 
     segmentAtX(x: number) {

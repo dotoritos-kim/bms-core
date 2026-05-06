@@ -115,65 +115,19 @@ export class BMSParser {
         return KeySounds.fromBMSChart(this.chart);
     }
     calculateTotalPlayTime(): number {
-        if (this.chart) {
-            const bpmMap: { [key: string]: number } = {};
-            let defaultBpm = 120; // 기본 BPM
-            let totalTime = 0;
+        if (!this.chart) return 0;
 
-            // 1. 헤더에서 BPM 정보 가져오기
-            const bpmHeader = this.chart.headers.get('bpm');
-            if (bpmHeader) {
-                defaultBpm = parseFloat(bpmHeader);
-            }
+        // Timing 클래스에 위임하여 SSoT 유지 (M1)
+        const timing = Timing.fromBMSChart(this.chart);
 
-            this.chart.headers.each((key, value) => {
-                if (key.toLowerCase().startsWith('bpm')) {
-                    const bpmKey = key.slice(3).toUpperCase();
-                    bpmMap[bpmKey] = parseFloat(value);
-                }
-            });
+        // 마지막 노트 beat 계산 (채널 01/02/03/08/09 포함 전체 오브젝트 기준)
+        const objects = this.chart.objects.allSorted();
+        if (objects.length === 0) return 0;
 
-            // 2. 모든 객체를 시간 순으로 정렬
-            const objects = this.chart.objects.allSorted();
-            let currentBpm = defaultBpm;
-            let previousBeat = 0;
+        const lastObj = objects[objects.length - 1];
+        const lastBeat = this.chart.measureToBeat(lastObj.measure, lastObj.fraction);
 
-            for (const obj of objects) {
-                const currentBeat = obj.measure + obj.fraction; // 마디 + 세분화된 위치
-
-                // 마디 간의 시간을 계산
-                const deltaBeat = currentBeat - previousBeat;
-                const deltaTime = (deltaBeat * 240) / currentBpm;
-                totalTime += deltaTime;
-
-                previousBeat = currentBeat;
-
-                // BPM 변경 처리
-                if (obj.channel === '03') {
-                    // 채널 03: 값 자체가 16진수 BPM (예: 'FF' = 255)
-                    const hexBpm = parseInt(obj.value, 16);
-                    if (hexBpm > 0) {
-                        currentBpm = hexBpm;
-                    }
-                } else if (obj.channel === '08') {
-                    // 채널 08: #BPMxx 헤더 참조
-                    const bpmKey = obj.value.toUpperCase();
-                    if (bpmMap[bpmKey]) {
-                        currentBpm = bpmMap[bpmKey];
-                    }
-                }
-
-                // STOP 명령 처리
-                if (obj.channel === '09') {
-                    const stopValue = parseInt(obj.value, 10) / 192; // STOP은 192틱 단위
-                    totalTime += stopValue;
-                }
-            }
-
-            return totalTime * 1000;
-        } else {
-            return 0;
-        }
+        return timing.beatToSeconds(lastBeat) * 1000;
     }
 }
 export { Reader, Compiler, KeySounds, Timing, SongInfo, Positioning, Spacing, BMSChart, Notes, TimeSignatures };
