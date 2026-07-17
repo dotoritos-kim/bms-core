@@ -31,7 +31,9 @@
     "type-check": "tsc --noEmit",
     "clean": "rm -rf dist",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "keywords": [
     "bms",
@@ -47,6 +49,7 @@
   },
   "devDependencies": {
     "@types/lodash": "^4.17.0",
+    "prettier": "^3.4.0",
     "typescript": "^5.7.2",
     "vite": "^6.0.5",
     "vite-plugin-dts": "^4.3.0",

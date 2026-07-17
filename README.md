@@ -45,6 +45,19 @@ can collide with Shift-JIS (the bytes also form valid half-width katakana).
 For Russian charts, prefer the explicit `.win1251` extension or the
 `forceEncoding` option.
 
+## Development
+
+```bash
+npm install       # on Windows use `npm install --include=dev` if devDeps are skipped
+npm run build     # vite build + .d.ts emit
+npm test          # vitest
+npm run format    # prettier (config: .prettierrc.json)
+```
+
+This package is **vendored** by `bms-electron-app` into `vendor/bms-core/` via npm
+workspaces. When changing the public API, keep the vendored copy in sync — see the
+workspace health report (`WORKSPACE_HEALTH_*.md`).
+
 ## Versioning
 
 Standard semver. The chart object shape is part of the public API; structural
