@@ -33,7 +33,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "lint": "eslint ."
   },
   "keywords": [
     "bms",
@@ -48,9 +49,12 @@
     "lodash": "^4.17.21"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/lodash": "^4.17.0",
+    "eslint": "^10.8.0",
     "prettier": "^3.4.0",
     "typescript": "^5.7.2",
+    "typescript-eslint": "^8.65.0",
     "vite": "^6.0.5",
     "vite-plugin-dts": "^4.3.0",
     "vitest": "^4.1.0"
