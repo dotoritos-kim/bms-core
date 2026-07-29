@@ -91,7 +91,6 @@ export function createCombinedMapping(
   style: BMSStyle = 'iidx',
   isDP: boolean = false
 ): { [channel: string]: string } {
-  const mode = isDP ? 'dp' : 'sp';
   switch (style) {
     case 'keyboard': return { ..._kbSP, ...( isDP ? _kbDP : {} ) };
     case 'pms':      return { ..._pmsFw };

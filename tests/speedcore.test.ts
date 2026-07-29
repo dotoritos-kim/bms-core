@@ -105,7 +105,7 @@ describe('Speedcore', () => {
       // Before stop
       expect(sc.t(6)).toBe(3);
       // At stop boundary x=10, first segment with inclusive match
-      expect(sc.t(10)).toBe(5 + (10 - 10) / (0 || 1)); // = 5
+      expect(sc.t(10)).toBe(5); // 5 + (10 - 10) / (dx=0 → fallback 1) = 5
       // After stop: t(12) => segment[2]: 7 + (12-10)/2 = 8
       expect(sc.t(12)).toBe(8);
     });

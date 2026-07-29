@@ -1,12 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { BMSParser, Notes, Timing, SongInfo, Reader, Compiler } from '../src';
+import { BMSParser, Reader, Compiler } from '../src';
 import { readFileSync } from 'fs';
-
-// Helper: read file as buffer and decode using Reader (handles Shift-JIS etc.)
-function readBmsFile(filePath: string): string {
-  const buffer = readFileSync(filePath);
-  return Reader.read(buffer);
-}
 
 describe('Extreme Edge Cases', () => {
 

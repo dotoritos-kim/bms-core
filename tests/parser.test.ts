@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { BMSParser, Notes, Timing, SongInfo, KeySounds, Reader } from '../src';
-import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
+import { BMSParser, Reader } from '../src';
+import { readFileSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
 
 // Helper: read file as buffer and decode using Reader (handles Shift-JIS etc.)

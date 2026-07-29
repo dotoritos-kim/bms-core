@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { BMSWriter } from '../src/writer';
 import type { EditableBMSChart, EditableBMSNote, BMSHeaderData } from '../src/writer/types';
-import { IIDX_SP_REVERSE } from '../src/writer/channelWriter';
 
 function makeHeaders(overrides: Partial<BMSHeaderData> = {}): BMSHeaderData {
   return {

@@ -127,7 +127,7 @@ function buildIidxReverse(mode: 'sp' | 'dp'): ReverseChannelMapping {
 
 export const IIDX_STRATEGY: ChannelStyleStrategy = {
   id: 'iidx',
-  score(stats, playerHeader) {
+  score(stats, _playerHeader) {
     const { counts } = stats;
     const ch18 = (counts['18'] || 0) + (counts['38'] || 0) + (counts['58'] || 0);
     const ch19 = (counts['19'] || 0) + (counts['39'] || 0) + (counts['59'] || 0);

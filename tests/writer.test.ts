@@ -58,7 +58,6 @@ describe('BMSWriter - Round Trip', () => {
     parser.compileString(content);
 
     const editable = BMSWriter.fromBMSChart(parser.chart!);
-    const originalNoteCount = editable.notes.length;
     const originalTitle = editable.headers.title;
     const originalArtist = editable.headers.artist;
     const originalBpm = editable.headers.bpm;
