@@ -3,16 +3,16 @@ import { BMSChart } from '../../bms/chart';
 import { SpeedSegment } from '../speedcore/segment';
 
 /**
- * Spacing은 곡의 박자와 노트 간격 간의 관계를 나타냅니다.
+ * Spacing represents the relationship between a song's beats and note spacing.
  *
- * Pump It Up!과 같은 일부 리듬 게임에서는
- * 노트차트에 의해 속도(노트 간격 계수)가 조정될 수 있습니다.
- * StepMania의 `#SPEED` 세그먼트가 그 예입니다.
+ * In some rhythm games, such as Pump It Up!,
+ * the speed (note spacing factor) can be adjusted by the notechart.
+ * StepMania's `#SPEED` segments are one example.
  */
 export class Spacing {
     private _speedcore?: Speedcore;
     /**
-     * 주어진 `segments`로 Spacing을 생성합니다.
+     * Creates a Spacing from the given `segments`.
      */
     constructor(segments: SpacingSegment[]) {
         if (segments.length > 0) {
@@ -21,8 +21,8 @@ export class Spacing {
     }
 
     /**
-     * 지정된 박자에서의 노트 간격 계수를 반환합니다.
-     * @param beat 박자
+     * Returns the note spacing factor at the specified beat.
+     * @param beat the beat
      */
     factor(beat: number) {
         if (this._speedcore) {
@@ -33,11 +33,11 @@ export class Spacing {
     }
 
     /**
-     * BMSChart에서 Spacing 객체를 생성합니다.
+     * Creates a Spacing object from a BMSChart.
      *
-     * ## `#SPEED` 및 `#xxxSP`
+     * ## `#SPEED` and `#xxxSP`
      *
-     * 속도는 키프레임으로 정의됩니다. 이 키프레임은 선형 보간됩니다.
+     * Speeds are defined as keyframes. These keyframes are interpolated linearly.
      *
      * ```
      * #SPEED01 1.0
@@ -46,12 +46,12 @@ export class Spacing {
      * #001SP:01010202
      * ```
      *
-     * 이 예에서, 노트 간격 계수는 박자 1에서 1.0배에서 시작하여
-     * 박자 2에서 2.0배로 점진적으로 변화합니다.
+     * In this example, the note spacing factor starts at 1.0x at beat 1
+     * and gradually changes to 2.0x at beat 2.
      *
-     * Spacing 객체를 반환합니다.
+     * Returns a Spacing object.
      *
-     * @param {BMSChart} chart 차트
+     * @param {BMSChart} chart the chart
      */
     static fromBMSChart(chart: BMSChart) {
         void BMSChart;
@@ -86,16 +86,16 @@ export class Spacing {
 }
 
 export interface SpacingSegment extends SpeedSegment {
-    /** 박자 번호 */
+    /** Beat number */
     t: number;
-    /** 박자 `t`에서의 간격 */
+    /** Spacing at beat `t` */
     x: number;
     /**
-     * 연속적인 속도 변화를 만들기 위한 박자당 간격 계수 변화량
+     * Change in the spacing factor per beat, used to create continuous speed changes
      */
     dx: number;
     /**
-     * 세그먼트의 일부로 시작 박자 `t`를 포함할지 여부
+     * Whether the starting beat `t` is included as part of the segment
      */
     inclusive: boolean;
 }

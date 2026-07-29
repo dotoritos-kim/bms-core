@@ -1,30 +1,30 @@
 /**
- * BGA (Background Animation) 모듈
+ * BGA (Background Animation) module
  *
- * #BGAxx 명령어를 파싱하여 BMP 참조, 크롭 좌표, 오프셋 정보를 관리합니다.
+ * Parses #BGAxx commands and manages BMP references, crop coordinates, and offsets.
  *
- * 형식: #BGAxx yy x1 y1 x2 y2 [dx dy]
- * - xx: BGA 인덱스 (Base36)
- * - yy: BMP 인덱스 (참조할 이미지)
- * - x1, y1, x2, y2: 크롭 영역 (픽셀 좌표)
- * - dx, dy: 표시 오프셋 (선택적)
+ * Format: #BGAxx yy x1 y1 x2 y2 [dx dy]
+ * - xx: BGA index (Base36)
+ * - yy: BMP index (referenced image)
+ * - x1, y1, x2, y2: crop area (pixel coordinates)
+ * - dx, dy: display offset (optional)
  */
 
 import type { BMSChart } from '../../bms/chart';
 
 export interface BGADefinition {
-    /** BGA 인덱스 (Base36) */
+    /** BGA index (Base36) */
     id: string;
-    /** 참조하는 BMP 인덱스 */
+    /** Referenced BMP index */
     bmpId: string;
-    /** 크롭 영역 */
+    /** Crop area */
     crop: {
         x1: number;
         y1: number;
         x2: number;
         y2: number;
     };
-    /** 표시 오프셋 (선택적) */
+    /** Display offset (optional) */
     offset?: {
         dx: number;
         dy: number;
@@ -35,12 +35,12 @@ export class BGA {
     private _map: Map<string, BGADefinition> = new Map();
 
     /**
-     * BMSChart에서 BGA 정의 추출
+     * Extracts BGA definitions from a BMSChart.
      */
     static fromBMSChart(chart: BMSChart): BGA {
         const bga = new BGA();
 
-        // 모든 헤더를 순회하며 #BGAxx 찾기
+        // Scan every header looking for #BGAxx
         chart.headers.each((name: string, value: string) => {
             const bgaMatch = name.match(/^BGA([0-9A-Z]{2})$/i);
             if (bgaMatch && value) {
@@ -59,11 +59,11 @@ export class BGA {
     }
 
     /**
-     * #BGAxx 값 파싱
-     * 형식: yy x1 y1 x2 y2 [dx dy]
+     * Parses a #BGAxx value.
+     * Format: yy x1 y1 x2 y2 [dx dy]
      */
     private parseBGAValue(value: string): Omit<BGADefinition, 'id'> | null {
-        // 공백으로 분리
+        // Split on whitespace
         const parts = value.trim().split(/\s+/);
 
         if (parts.length < 5) {
@@ -76,7 +76,7 @@ export class BGA {
         const x2 = parseInt(parts[3], 10);
         const y2 = parseInt(parts[4], 10);
 
-        // 크롭 좌표 유효성 검사
+        // Validate crop coordinates
         if (isNaN(x1) || isNaN(y1) || isNaN(x2) || isNaN(y2)) {
             return null;
         }
@@ -86,7 +86,7 @@ export class BGA {
             crop: { x1, y1, x2, y2 },
         };
 
-        // 오프셋이 있는 경우 (7개 파라미터)
+        // Offset present (7 parameters)
         if (parts.length >= 7) {
             const dx = parseInt(parts[5], 10);
             const dy = parseInt(parts[6], 10);
@@ -99,14 +99,14 @@ export class BGA {
     }
 
     /**
-     * BGA 정의 조회
+     * Looks up a BGA definition.
      */
     get(id: string): BGADefinition | undefined {
         return this._map.get(id.toUpperCase());
     }
 
     /**
-     * 모든 BGA 정의 반환
+     * Returns every BGA definition.
      */
     all(): Record<string, BGADefinition> {
         const result: Record<string, BGADefinition> = {};
@@ -117,14 +117,14 @@ export class BGA {
     }
 
     /**
-     * BGA 정의 개수
+     * Number of BGA definitions.
      */
     count(): number {
         return this._map.size;
     }
 
     /**
-     * BGA 정의가 있는지 확인
+     * Checks whether a BGA definition exists.
      */
     has(id: string): boolean {
         return this._map.has(id.toUpperCase());

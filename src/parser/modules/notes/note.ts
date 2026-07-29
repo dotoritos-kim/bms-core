@@ -1,13 +1,13 @@
 /**
- * 노트 타입 정의
- * - playable: 플레이어가 쳐야 하는 노트 (채널 11-19, 21-29)
- * - invisible: 보이지 않는 고스트 노트 (채널 31-39, 41-49)
- * - landmine: 지뢰 노트 (채널 D1-D9, E1-E9)
- * - bgm: 자동 재생 BGM 노트 (채널 01)
+ * Note type definitions
+ * - playable: notes the player must hit (channels 11-19, 21-29)
+ * - invisible: invisible ghost notes (channels 31-39, 41-49)
+ * - landmine: landmine notes (channels D1-D9, E1-E9)
+ * - bgm: auto-played BGM notes (channel 01)
  */
 export type NoteType = 'playable' | 'invisible' | 'landmine' | 'bgm';
 
-/** 노트차트의 개별 노트 */
+/** An individual note in a notechart */
 export interface BMSNote {
     beat: number;
     endBeat?: number;
@@ -19,39 +19,40 @@ export interface BMSNote {
     keysound: string;
 
     /**
-     * 노트 타입
+     * Note type
      */
     noteType?: NoteType;
 
     /**
-     * 원본 BMS 채널 (디버깅/분석용)
+     * Original BMS channel (for debugging/analysis)
      */
     channel?: string;
 
     /**
-     * 지뢰 노트 데미지 (0-100%)
-     * landmine 타입 노트에서만 유효
+     * Landmine note damage (0-100%)
+     * Only valid for landmine-type notes
      */
     damage?: number;
 
     /**
-     * [bmson] 사운드 파일에서 재생을 시작할 시간(초).
+     * [bmson] Time (in seconds) at which playback of the sound file starts.
      */
     keysoundStart?: number;
 
     /**
-     * [bmson] 사운드 파일에서 재생을 중지할 시간(초).
-     * `undefined`일 경우, 사운드 파일이 끝까지 재생됨을 의미합니다.
+     * [bmson] Time (in seconds) at which playback of the sound file stops.
+     * When `undefined`, the sound file plays to the end.
      */
     keysoundEnd?: number;
 }
 
 /**
- * 런타임에서 BMSNote 객체의 필수 필드를 검증합니다.
+ * Validates the required fields of a BMSNote object at runtime.
  *
- * 과거에는 자체 `DataStructure` Façade로 검증했으나, 사용처가 내부
- * `Notes` 컬렉션 한 곳뿐이고 필드 타입은 TypeScript로 이미 강제되므로
- * 작은 인라인 가드로 대체합니다. 외부 API에는 영향이 없습니다.
+ * This used to be validated via a custom `DataStructure` façade, but the only
+ * call site is the internal `Notes` collection and the field types are already
+ * enforced by TypeScript, so it was replaced with a small inline guard.
+ * The external API is unaffected.
  */
 export function assertBMSNote(value: BMSNote): void {
     if (typeof value.beat !== 'number') {

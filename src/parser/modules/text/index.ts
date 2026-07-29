@@ -1,13 +1,13 @@
 /**
- * Text 모듈
+ * Text module
  *
- * #TEXTxx 명령어와 채널 99를 파싱하여
- * 인게임 텍스트 표시를 관리합니다.
+ * Parses the #TEXTxx command and channel 99 to manage
+ * in-game text display.
  *
- * - #TEXTxx "string": 인덱스별 텍스트 정의
- * - 채널 99: 특정 비트에서 텍스트 표시
+ * - #TEXTxx "string": defines text per index
+ * - Channel 99: displays text at a specific beat
  *
- * 사용 예:
+ * Usage example:
  * #TEXT01 "Ready?"
  * #TEXT02 "GO!"
  * #00099:0102
@@ -16,32 +16,32 @@
 import type { BMSChart } from '../../bms/chart';
 
 export interface TextEvent {
-    /** 비트 위치 */
+    /** Beat position */
     beat: number;
-    /** 표시할 텍스트 */
+    /** Text to display */
     text: string;
-    /** 텍스트 인덱스 (참조용) */
+    /** Text index (for reference) */
     textId: string;
 }
 
 export class Text {
-    /** 인덱스별 텍스트 정의 (#TEXTxx) */
+    /** Text definitions by index (#TEXTxx) */
     private _definitions: Map<string, string> = new Map();
-    /** 비트별 텍스트 이벤트 (채널 99) */
+    /** Text events by beat (channel 99) */
     private _events: TextEvent[] = [];
 
     /**
-     * BMSChart에서 Text 정보 추출
+     * Extracts Text information from a BMSChart
      */
     static fromBMSChart(chart: BMSChart): Text {
         const text = new Text();
 
-        // #TEXTxx 파싱
+        // Parse #TEXTxx
         chart.headers.each((name: string, value: string) => {
             const textMatch = name.match(/^TEXT([0-9A-Z]{2})$/i);
             if (textMatch && value) {
                 const index = textMatch[1].toUpperCase();
-                // 따옴표 제거
+                // Strip quotes
                 let textValue = value.trim();
                 if ((textValue.startsWith('"') && textValue.endsWith('"')) ||
                     (textValue.startsWith("'") && textValue.endsWith("'"))) {
@@ -51,14 +51,14 @@ export class Text {
             }
         });
 
-        // 채널 99 이벤트 추출
+        // Extract channel 99 events
         const objects = chart.objects.all();
         for (const obj of objects) {
             if (obj.channel === '99') {
                 const beat = chart.measureToBeat(obj.measure, obj.fraction);
                 const textId = obj.value.toUpperCase();
 
-                // 텍스트 정의에서 값 조회
+                // Look up the value in the text definitions
                 const textValue = text._definitions.get(textId);
                 if (textValue !== undefined) {
                     text._events.push({
@@ -70,15 +70,15 @@ export class Text {
             }
         }
 
-        // 이벤트 정렬
+        // Sort events
         text._events.sort((a, b) => a.beat - b.beat);
 
         return text;
     }
 
     /**
-     * 특정 비트에서 활성화된 텍스트 반환
-     * (가장 최근에 표시된 텍스트)
+     * Returns the text active at a specific beat
+     * (the most recently displayed text)
      */
     atBeat(beat: number): string | null {
         if (this._events.length === 0) {
@@ -95,7 +95,7 @@ export class Text {
     }
 
     /**
-     * 특정 비트 범위 내의 텍스트 이벤트 반환
+     * Returns the text events within a specific beat range
      */
     getEventsInRange(startBeat: number, endBeat: number): TextEvent[] {
         return this._events.filter(
@@ -104,21 +104,21 @@ export class Text {
     }
 
     /**
-     * 모든 텍스트 이벤트 반환
+     * Returns all text events
      */
     allEvents(): TextEvent[] {
         return [...this._events];
     }
 
     /**
-     * 텍스트 정의 조회
+     * Looks up a text definition
      */
     getDefinition(index: string): string | undefined {
         return this._definitions.get(index.toUpperCase());
     }
 
     /**
-     * 모든 텍스트 정의 반환
+     * Returns all text definitions
      */
     allDefinitions(): Record<string, string> {
         const result: Record<string, string> = {};
@@ -129,7 +129,7 @@ export class Text {
     }
 
     /**
-     * 텍스트 이벤트가 있는지 여부
+     * Whether there are any text events
      */
     hasTextEvents(): boolean {
         return this._events.length > 0;

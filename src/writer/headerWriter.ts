@@ -1,11 +1,11 @@
 /**
  * BMS Header Writer
- * BMSHeaderData를 BMS 헤더 문자열로 변환
+ * Converts BMSHeaderData into BMS header strings
  */
 
 import type { BMSHeaderData, BMSWriterOptions } from './types';
 
-/** 기본 헤더 순서 */
+/** Default header order */
 const DEFAULT_HEADER_ORDER = [
   'player',
   'genre',
@@ -26,7 +26,7 @@ const DEFAULT_HEADER_ORDER = [
 ];
 
 /**
- * 헤더 값을 BMS 형식으로 포맷팅
+ * Formats a header value in BMS format
  */
 function formatHeaderValue(key: string, value: unknown): string | null {
   if (value === undefined || value === null || value === '') {
@@ -35,22 +35,22 @@ function formatHeaderValue(key: string, value: unknown): string | null {
 
   const upperKey = key.toUpperCase();
 
-  // 숫자 값 처리
+  // Handle numeric values
   if (typeof value === 'number') {
-    // BPM은 소수점 유지
+    // BPM keeps its decimal places
     if (upperKey === 'BPM') {
       return `#${upperKey} ${value}`;
     }
-    // 정수 값
+    // Integer values
     return `#${upperKey} ${Math.floor(value)}`;
   }
 
-  // 문자열 값
+  // String values
   return `#${upperKey} ${value}`;
 }
 
 /**
- * WAV/BMP/BPM/STOP 정의 생성
+ * Generates WAV/BMP/BPM/STOP definitions
  */
 function formatDefinitions(
   prefix: string,
@@ -58,7 +58,7 @@ function formatDefinitions(
 ): string[] {
   const lines: string[] = [];
 
-  // 키 정렬 (00-ZZ 순서)
+  // Sort keys (00-ZZ order)
   const sortedKeys = Array.from(definitions.keys()).sort((a, b) => {
     const aNum = parseInt(a, 36);
     const bNum = parseInt(b, 36);
@@ -76,7 +76,7 @@ function formatDefinitions(
 }
 
 /**
- * BMSHeaderData를 BMS 헤더 문자열 배열로 변환
+ * Converts BMSHeaderData into an array of BMS header strings
  */
 export function writeHeaders(
   headers: BMSHeaderData,
@@ -85,18 +85,18 @@ export function writeHeaders(
   const lines: string[] = [];
   const headerOrder = options.headerOrder || DEFAULT_HEADER_ORDER;
 
-  // 주석 추가
+  // Add comments
   if (options.includeComments) {
     lines.push('');
     lines.push('*---------------------- HEADER FIELD');
     lines.push('');
   }
 
-  // 기본 헤더 순서대로 출력
+  // Write in default header order
   for (const key of headerOrder) {
     const value = headers[key as keyof BMSHeaderData];
 
-    // Map 타입은 별도 처리
+    // Map types are handled separately
     if (value instanceof Map) continue;
 
     const formatted = formatHeaderValue(key, value);
@@ -105,7 +105,7 @@ export function writeHeaders(
     }
   }
 
-  // 커스텀 헤더 추가
+  // Add custom headers
   if (headers.custom && headers.custom.size > 0) {
     if (options.includeComments) {
       lines.push('');
@@ -119,10 +119,10 @@ export function writeHeaders(
     }
   }
 
-  // 빈 줄 추가
+  // Add a blank line
   lines.push('');
 
-  // BPM 정의 (확장 BPM용)
+  // BPM definitions (for extended BPM)
   if (headers.bpmDef && headers.bpmDef.size > 0) {
     if (options.includeComments) {
       lines.push('*---------------------- BPM DEFINITIONS');
@@ -131,7 +131,7 @@ export function writeHeaders(
     lines.push('');
   }
 
-  // STOP 정의
+  // STOP definitions
   if (headers.stopDef && headers.stopDef.size > 0) {
     if (options.includeComments) {
       lines.push('*---------------------- STOP DEFINITIONS');
@@ -140,7 +140,7 @@ export function writeHeaders(
     lines.push('');
   }
 
-  // WAV 정의
+  // WAV definitions
   if (headers.wav && headers.wav.size > 0) {
     if (options.includeComments) {
       lines.push('*---------------------- WAV DEFINITIONS');
@@ -149,7 +149,7 @@ export function writeHeaders(
     lines.push('');
   }
 
-  // BMP 정의
+  // BMP definitions
   if (headers.bmp && headers.bmp.size > 0) {
     if (options.includeComments) {
       lines.push('*---------------------- BMP DEFINITIONS');
@@ -162,7 +162,7 @@ export function writeHeaders(
 }
 
 /**
- * 빈 BMSHeaderData 생성
+ * Creates an empty BMSHeaderData
  */
 export function createEmptyHeaders(): BMSHeaderData {
   return {
@@ -191,7 +191,7 @@ export function createEmptyHeaders(): BMSHeaderData {
 }
 
 /**
- * BMSHeaders 객체에서 BMSHeaderData로 변환
+ * Converts a BMSHeaders object into BMSHeaderData
  */
 export function parseHeadersToData(
   headers: { get: (name: string) => string | undefined; each: (callback: (key: string, value: string) => void) => void }
@@ -201,7 +201,7 @@ export function parseHeadersToData(
   headers.each((key, value) => {
     const lowerKey = key.toLowerCase();
 
-    // WAV 정의
+    // WAV definitions
     if (lowerKey.startsWith('wav')) {
       const wavKey = key.slice(3).toUpperCase();
       if (wavKey) {
@@ -210,7 +210,7 @@ export function parseHeadersToData(
       return;
     }
 
-    // BMP 정의
+    // BMP definitions
     if (lowerKey.startsWith('bmp')) {
       const bmpKey = key.slice(3).toUpperCase();
       if (bmpKey) {
@@ -219,7 +219,7 @@ export function parseHeadersToData(
       return;
     }
 
-    // BPM 정의 (확장 BPM)
+    // BPM definitions (extended BPM)
     if (lowerKey.startsWith('bpm') && lowerKey.length > 3) {
       const bpmKey = key.slice(3).toUpperCase();
       if (bpmKey) {
@@ -228,7 +228,7 @@ export function parseHeadersToData(
       return;
     }
 
-    // STOP 정의
+    // STOP definitions
     if (lowerKey.startsWith('stop')) {
       const stopKey = key.slice(4).toUpperCase();
       if (stopKey) {
@@ -237,7 +237,7 @@ export function parseHeadersToData(
       return;
     }
 
-    // 기본 헤더
+    // Standard headers
     switch (lowerKey) {
       case 'player':
         data.player = parseInt(value, 10);
@@ -288,7 +288,7 @@ export function parseHeadersToData(
         data.lnobj = value;
         break;
       default:
-        // 알려지지 않은 헤더는 커스텀으로 저장
+        // Unknown headers are stored as custom
         if (!lowerKey.startsWith('wav') && !lowerKey.startsWith('bmp')) {
           data.custom.set(key.toUpperCase(), value);
         }

@@ -4,13 +4,13 @@ import { SpeedSegment } from '../speedcore/segment';
 import { Timing } from '../timing';
 
 /**
- * Positioning은 곡의 박자와 화면상의 위치 간의 관계를 나타내며,
- * 두 값 사이를 변환하는 방법을 제공합니다.
+ * Positioning represents the relationship between a song's beats and
+ * on-screen positions, and provides ways to convert between the two.
  *
- * 일부 리듬 게임에서는 박자당 스크롤 양이 다를 수 있습니다.
- * StepMania의 `#SCROLL` 세그먼트가 그 예입니다.
+ * In some rhythm games, the amount of scrolling per beat can vary.
+ * StepMania's `#SCROLL` segments are one example.
  *
- * #BASEBPM이 설정된 경우, BPM 변화에 따라 스크롤 속도가 정규화됩니다.
+ * When #BASEBPM is set, the scroll speed is normalized against BPM changes.
  * normalizedSpeed = currentBPM / baseBPM
  */
 export class Positioning {
@@ -20,27 +20,27 @@ export class Positioning {
     _timing: Timing | null = null;
 
     /**
-     * 주어진 `segments`로 Positioning을 생성합니다.
+     * Creates a Positioning from the given `segments`.
      * @param segments
-     * @param baseBpm #BASEBPM 값 (설정된 경우)
-     * @param timing Timing 객체 (BPM 변화 반영에 필요)
+     * @param baseBpm the #BASEBPM value (if set)
+     * @param timing Timing object (needed to reflect BPM changes)
      */
     constructor(segments: PositioningSegment[], baseBpm?: number | null, timing?: Timing | null) {
         this._speedcore = new Speedcore(segments);
         this._baseBpm = baseBpm ?? null;
         this._timing = timing ?? null;
 
-        // Timing이 있으면 BPM 변화를 반영한 정규화된 세그먼트 생성
-        // BASEBPM이 없으면 초기 BPM을 기준으로 사용
+        // If Timing is available, build normalized segments that reflect BPM changes.
+        // Without BASEBPM, the initial BPM is used as the reference.
         if (this._timing) {
             this._normalizedSpeedcore = this._buildNormalizedSpeedcore(segments);
         }
     }
 
     /**
-     * BPM 변화를 반영한 Speedcore를 생성합니다.
-     * SCROLL 세그먼트와 BPM 변경 지점을 병합하여 새 세그먼트를 생성합니다.
-     * BASEBPM이 없으면 초기 BPM을 기준으로 사용합니다.
+     * Builds a Speedcore that reflects BPM changes.
+     * Merges SCROLL segments with BPM change points to produce new segments.
+     * Without BASEBPM, the initial BPM is used as the reference.
      */
     private _buildNormalizedSpeedcore(scrollSegments: PositioningSegment[]): Speedcore {
         if (!this._timing) {
@@ -48,21 +48,21 @@ export class Positioning {
         }
 
         const bpmSegments = this._timing.getBpmSegments();
-        // BASEBPM이 없으면 초기 BPM 사용
+        // Use the initial BPM when BASEBPM is not set
         const baseBpm = this._baseBpm ?? this._timing.getInitialBpm();
 
-        // baseBpm이 유효하지 않으면 정규화 없이 반환
+        // If baseBpm is invalid, return without normalization
         if (!baseBpm || baseBpm <= 0) {
             return new Speedcore(scrollSegments);
         }
 
-        // 모든 이벤트 지점을 수집 (SCROLL + BPM)
+        // Collect all event points (SCROLL + BPM)
         const eventBeats = new Set<number>();
         for (const seg of scrollSegments) eventBeats.add(seg.t);
         for (const seg of bpmSegments) eventBeats.add(seg.beat);
         const sortedBeats = Array.from(eventBeats).sort((a, b) => a - b);
 
-        // 각 지점에서의 SCROLL 속도와 BPM을 계산하여 새 세그먼트 생성
+        // Compute the SCROLL speed and BPM at each point to build new segments
         const normalizedSegments: SpeedSegment[] = [];
         let position = 0;
 
@@ -73,7 +73,7 @@ export class Positioning {
             const bpmRatio = currentBpm / baseBpm;
             const normalizedSpeed = scrollSpeed * bpmRatio;
 
-            // 이전 세그먼트가 있으면 위치 계산
+            // If there is a previous segment, compute the position
             if (i > 0) {
                 const prevBeat = sortedBeats[i - 1];
                 const prevSeg = normalizedSegments[normalizedSegments.length - 1];
@@ -88,7 +88,7 @@ export class Positioning {
             });
         }
 
-        // 세그먼트가 비어있으면 기본 세그먼트 추가
+        // If there are no segments, add a default one
         if (normalizedSegments.length === 0) {
             normalizedSegments.push({
                 t: 0,
@@ -102,9 +102,9 @@ export class Positioning {
     }
 
     /**
-     * 지정된 박자에서의 스크롤 속도를 반환합니다.
-     * #BASEBPM이 설정된 경우 BPM 비율로 정규화됩니다.
-     * @param beat 박자 번호
+     * Returns the scroll speed at the specified beat.
+     * When #BASEBPM is set, it is normalized by the BPM ratio.
+     * @param beat beat number
      */
     speed(beat: number) {
         if (this._normalizedSpeedcore) {
@@ -114,19 +114,19 @@ export class Positioning {
     }
 
     /**
-     * 지정된 박자에서의 원본 스크롤 속도를 반환합니다 (BPM 정규화 미적용).
-     * SCROLL 명령어에 의한 속도만 반환합니다.
-     * @param beat 박자 번호
+     * Returns the raw scroll speed at the specified beat (no BPM normalization).
+     * Returns only the speed set by SCROLL commands.
+     * @param beat beat number
      */
     rawScrollSpeed(beat: number) {
         return this._speedcore.dx(beat);
     }
 
     /**
-     * 지정된 박자에서의 유효 스크롤 속도를 반환합니다.
-     * 스크롤 속도와 BPM 비율을 모두 고려합니다.
-     * 너비 스케일링 등 시각적 효과에 사용됩니다.
-     * @param beat 박자 번호
+     * Returns the effective scroll speed at the specified beat.
+     * Takes both the scroll speed and the BPM ratio into account.
+     * Used for visual effects such as width scaling.
+     * @param beat beat number
      */
     effectiveSpeed(beat: number) {
         const scrollSpeed = this._speedcore.dx(beat);
@@ -135,9 +135,9 @@ export class Positioning {
     }
 
     /**
-     * 지정된 박자에서 총 경과된 스크롤 양을 반환합니다.
-     * #BASEBPM이 설정된 경우 BPM 정규화가 적용됩니다.
-     * @param beat 박자 번호
+     * Returns the total accumulated scroll amount at the specified beat.
+     * When #BASEBPM is set, BPM normalization is applied.
+     * @param beat beat number
      */
     position(beat: number) {
         if (this._normalizedSpeedcore) {
@@ -147,17 +147,17 @@ export class Positioning {
     }
 
     /**
-     * #BASEBPM 값 반환
+     * Returns the #BASEBPM value.
      */
     getBaseBpm(): number | null {
         return this._baseBpm;
     }
 
     /**
-     * 지정된 박자에서의 BPM 비율을 반환합니다.
-     * - BASEBPM이 설정된 경우: currentBPM / BASEBPM
-     * - 그렇지 않으면: currentBPM / initialBPM
-     * @param beat 박자 번호
+     * Returns the BPM ratio at the specified beat.
+     * - When BASEBPM is set: currentBPM / BASEBPM
+     * - Otherwise: currentBPM / initialBPM
+     * @param beat beat number
      */
     bpmRatioAtBeat(beat: number): number {
         if (!this._timing) return 1;
@@ -168,9 +168,9 @@ export class Positioning {
     }
 
     /**
-     * BMSChart에서 Positioning 객체를 생성합니다.
-     * @param {BMSChart} chart Positioning을 생성할 BMSChart
-     * @param {Timing} timing Timing 객체 (#BASEBPM 정규화에 필요, 선택적)
+     * Creates a Positioning object from a BMSChart.
+     * @param {BMSChart} chart the BMSChart to create the Positioning from
+     * @param {Timing} timing Timing object (needed for #BASEBPM normalization, optional)
      */
     static fromBMSChart(chart: BMSChart, timing?: Timing) {
         void BMSChart;
@@ -202,7 +202,7 @@ export class Positioning {
             }
         });
 
-        // #BASEBPM 파싱
+        // Parse #BASEBPM
         const baseBpmHeader = chart.headers.get('BASEBPM');
         const baseBpm = baseBpmHeader ? parseFloat(baseBpmHeader) : null;
 
@@ -211,12 +211,12 @@ export class Positioning {
 }
 
 export interface PositioningSegment extends SpeedSegment {
-    /** 박자 번호 */
+    /** Beat number */
     t: number;
-    /** 박자 `t`에서의 총 경과된 스크롤 양 */
+    /** Total accumulated scroll amount at beat `t` */
     x: number;
-    /** 박자당 스크롤 양 */
+    /** Scroll amount per beat */
     dx: number;
-    /** 세그먼트의 일부로 시작 박자 `t`를 포함할지 여부 */
+    /** Whether the starting beat `t` is included as part of the segment */
     inclusive: boolean;
 }

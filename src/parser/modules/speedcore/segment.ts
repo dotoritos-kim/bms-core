@@ -1,18 +1,19 @@
 export interface SpeedSegment {
     t: number;
     x: number;
-    /** t당 x의 변화량 */
+    /** Change in x per t */
     dx: number;
-    /** 세그먼트가 t를 포함하는지 여부 */
+    /** Whether the segment includes t */
     inclusive: boolean;
 }
 
 /**
- * 런타임에서 SpeedSegment의 필수 수치 필드를 검증합니다.
+ * Validates the required numeric fields of a SpeedSegment at runtime.
  *
- * 과거에는 자체 `DataStructure` Façade로 검증했으나, `Speedcore`는 라이브러리
- * 내부에서만 생성되고 필드 타입은 TypeScript로 이미 강제되므로 작은
- * 인라인 가드로 대체합니다. 외부 API에는 영향이 없습니다.
+ * This used to be validated with a custom `DataStructure` facade, but since
+ * `Speedcore` is only created inside the library and the field types are
+ * already enforced by TypeScript, it is replaced with a small inline guard.
+ * The external API is unaffected.
  */
 export function assertSpeedSegment(value: SpeedSegment): void {
     if (typeof value.t !== 'number') {

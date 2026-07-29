@@ -1,5 +1,5 @@
 /**
- * Strategy 패턴 — 스타일 감지 단위 테스트
+ * Strategy pattern — style detection unit tests
  * REFACTOR-PLAN PR-4 / P1
  */
 import { describe, it, expect } from 'vitest';
@@ -12,7 +12,7 @@ import {
   computeChannelStats,
 } from '../src/parser/strategies/styleStrategy';
 
-// 채널 배열 생성 헬퍼
+// Helper that builds channel arrays
 function objs(channels: string[]) {
   return channels.map(ch => ({ channel: ch }));
 }
@@ -54,7 +54,7 @@ describe('IIDX_STRATEGY.score', () => {
 
 describe('KEYBOARD_STRATEGY.score', () => {
   it('ch17이 평균의 50% 이상이면 최고점(100)', () => {
-    // 11~15 각 10개, 17도 10개 → avg=10, ch17=10 > 5
+    // 10 each of 11~15, and 10 of 17 → avg=10, ch17=10 > 5
     const many = (ch: string, n: number) => Array(n).fill(ch);
     const channels = [
       ...many('11',10),...many('12',10),...many('13',10),...many('14',10),...many('15',10),

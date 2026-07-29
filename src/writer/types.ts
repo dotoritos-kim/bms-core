@@ -1,57 +1,57 @@
 /**
  * BMS Writer Types
- * BMS 파일 쓰기를 위한 타입 정의
+ * Type definitions for writing BMS files
  */
 
 import type { BMSNote } from '../parser';
 
 /**
- * BMS Writer 옵션
+ * BMS Writer options
  */
 export interface BMSWriterOptions {
-  /** 출력 포맷 (기본: bms) */
+  /** Output format (default: bms) */
   format?: 'bms' | 'bme' | 'bml';
-  /** 마디당 기본 분해능 (기본: 192) */
+  /** Default resolution per measure (default: 192) */
   resolution?: number;
-  /** 헤더 순서 커스터마이징 */
+  /** Customizes the header order */
   headerOrder?: string[];
-  /** 주석 포함 여부 */
+  /** Whether to include comments */
   includeComments?: boolean;
-  /** 빈 마디 생략 여부 */
+  /** Whether to skip empty measures */
   skipEmptyMeasures?: boolean;
-  /** 롱노트 출력 형식 (기본: 'channel' = 5x/6x 채널, 'lnobj' = LNOBJ 마커) */
+  /** Long note output format (default: 'channel' = 5x/6x channels, 'lnobj' = LNOBJ marker) */
   lnMode?: 'channel' | 'lnobj';
-  /** LNOBJ 마커 값 (lnMode='lnobj'일 때 사용, 기본: 헤더의 lnobj 값 또는 미사용 최대 WAV ID) */
+  /** LNOBJ marker value (used when lnMode='lnobj'; default: the lnobj header value or the largest unused WAV ID) */
   lnObjValue?: string;
   /**
-   * tick 데이터를 활용한 자동 해상도 계산 (기본: true)
-   * true: 각 마디의 실제 노트 tick 위치에서 최소 BMS 해상도를 동적으로 계산
-   *       → 64분 셋잇단 등 192 초과 해상도 노트도 손실 없이 출력
-   * false: resolution 옵션의 고정값만 사용 (레거시 동작)
+   * Automatic resolution calculation using tick data (default: true)
+   * true: dynamically computes the minimum BMS resolution from the actual note tick positions of each measure
+   *       -> notes at resolutions above 192, such as 64th-note triplets, are written without loss
+   * false: uses only the fixed value of the resolution option (legacy behavior)
    */
   autoResolution?: boolean;
 }
 
 /**
- * 편집 가능한 BMS 차트 데이터
+ * Editable BMS chart data
  */
 export interface EditableBMSChart {
-  /** 헤더 정보 */
+  /** Header information */
   headers: BMSHeaderData;
-  /** 노트 데이터 */
+  /** Note data */
   notes: EditableBMSNote[];
-  /** 박자표 (마디별 크기) */
+  /** Time signatures (size per measure) */
   timeSignatures: Map<number, number>;
-  /** BPM 변경 이벤트 */
+  /** BPM change events */
   bpmChanges: BMSBpmChange[];
-  /** STOP 이벤트 */
+  /** STOP events */
   stopEvents: BMSStopEvent[];
-  /** BGA 이벤트 */
+  /** BGA events */
   bgaEvents: BMSBgaEvent[];
 }
 
 /**
- * BMS 헤더 데이터
+ * BMS header data
  */
 export interface BMSHeaderData {
   player?: number;
@@ -70,111 +70,111 @@ export interface BMSHeaderData {
   backbmp?: string;
   lntype?: number;
   lnobj?: string;
-  /** WAV 정의 */
+  /** WAV definitions */
   wav: Map<string, string>;
-  /** BMP 정의 */
+  /** BMP definitions */
   bmp: Map<string, string>;
-  /** BPM 정의 (확장 BPM용) */
+  /** BPM definitions (for extended BPM) */
   bpmDef: Map<string, number>;
-  /** STOP 정의 */
+  /** STOP definitions */
   stopDef: Map<string, number>;
-  /** 기타 커스텀 헤더 */
+  /** Other custom headers */
   custom: Map<string, string>;
 }
 
 /**
- * 편집 가능한 BMS 노트
- * 파서의 BMSNote를 확장하여 편집에 필요한 정보 추가
+ * Editable BMS note
+ * Extends the parser's BMSNote with information needed for editing
  */
 export interface EditableBMSNote extends BMSNote {
-  /** 고유 ID (편집용) */
+  /** Unique ID (for editing) */
   id: string;
   /** Tick position (960 ticks/beat). Primary source of truth in editor. */
   tick: number;
   /** End tick for long notes. */
   endTick?: number;
-  /** 노트가 위치한 마디 */
+  /** The measure the note is in */
   measure: number;
-  /** 마디 내 분수 위치 (0-1) */
+  /** Fractional position within the measure (0-1) */
   fraction: number;
-  /** 원본 채널 */
+  /** Original channel */
   channel: string;
-  /** 추가 키음 레이어 (멀티 키음 지원) */
+  /** Additional keysound layers (multi-keysound support) */
   additionalKeysounds?: Array<{
     keysound: string;
-    /** 출력 채널 타입 ('invisible' → 3x/4x 채널, 'bgm' → 01 채널) */
+    /** Output channel type ('invisible' → 3x/4x channels, 'bgm' → channel 01) */
     type: 'invisible' | 'bgm';
   }>;
-  /** BGM 채널 그룹 번호 (에디터 전용 — 시각적 레인 분리용, BMS 출력에는 영향 없음) */
+  /** BGM channel group number (editor only — for visual lane separation, no effect on BMS output) */
   bgmChannel?: number;
 }
 
 /**
- * BPM 변경 이벤트
+ * BPM change event
  */
 export interface BMSBpmChange {
-  /** 마디 번호 */
+  /** Measure number */
   measure: number;
-  /** 마디 내 분수 위치 */
+  /** Fractional position within the measure */
   fraction: number;
-  /** BPM 값 */
+  /** BPM value */
   bpm: number;
-  /** 확장 BPM 사용 여부 (채널 08 vs 03) */
+  /** Whether extended BPM is used (channel 08 vs 03) */
   extended?: boolean;
-  /** 확장 BPM 정의 키 */
+  /** Extended BPM definition key */
   bpmDefKey?: string;
 }
 
 /**
- * STOP 이벤트
+ * STOP event
  */
 export interface BMSStopEvent {
-  /** 마디 번호 */
+  /** Measure number */
   measure: number;
-  /** 마디 내 분수 위치 */
+  /** Fractional position within the measure */
   fraction: number;
-  /** STOP 값 (192 = 1 비트) */
+  /** STOP value (192 = 1 beat) */
   duration: number;
-  /** STOP 정의 키 */
+  /** STOP definition key */
   stopDefKey?: string;
 }
 
 /**
- * BGA 이벤트
+ * BGA event
  */
 export interface BMSBgaEvent {
-  /** 마디 번호 */
+  /** Measure number */
   measure: number;
-  /** 마디 내 분수 위치 */
+  /** Fractional position within the measure */
   fraction: number;
-  /** BMP 정의 키 */
+  /** BMP definition key */
   bmpKey: string;
-  /** BGA 레이어 (04: BGA, 06: Poor BGA, 07: Layer) */
+  /** BGA layer (04: BGA, 06: Poor BGA, 07: Layer) */
   layer: '04' | '06' | '07';
 }
 
 /**
- * 채널 데이터 (출력용)
+ * Channel data (for output)
  */
 export interface ChannelData {
-  /** 채널 번호 (2자리) */
+  /** Channel number (2 characters) */
   channel: string;
-  /** 마디 번호 */
+  /** Measure number */
   measure: number;
-  /** 데이터 문자열 */
+  /** Data string */
   data: string;
 }
 
 /**
- * 노트 -> 채널 역매핑
+ * Note -> channel reverse mapping
  */
 export interface ReverseChannelMapping {
-  /** 컬럼 ID -> 채널 번호 */
+  /** Column ID -> channel number */
   playable: Map<string, string>;
-  /** 컬럼 ID -> 인비저블 채널 번호 */
+  /** Column ID -> invisible channel number */
   invisible: Map<string, string>;
-  /** 컬럼 ID -> 지뢰 채널 번호 */
+  /** Column ID -> landmine channel number */
   landmine: Map<string, string>;
-  /** 컬럼 ID -> 롱노트 채널 번호 */
+  /** Column ID -> long note channel number */
   longNote: Map<string, string>;
 }

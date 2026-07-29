@@ -1,17 +1,17 @@
 /**
- * TimeSignatures는 마디 번호로 색인된 박자 값들의 모음입니다.
+ * TimeSignatures is a collection of time-signature values indexed by measure number.
  *
- * 마디 번호는 0부터 시작합니다.
- * 기본적으로 각 마디는 1의 마디 크기를 가지며,
- * 이는 일반적인 4/4 박자표를 나타냅니다.
+ * Measure numbers start at 0.
+ * By default, each measure has a measure size of 1,
+ * which represents a common 4/4 time signature.
  *
- * Compiler를 사용해 BMSChart로 파싱한 후,
- * TimeSignatures 객체에 접근할 수 있습니다:
+ * After parsing into a BMSChart using the Compiler,
+ * the TimeSignatures object can be accessed:
  *
- * 또한 생성자를 사용하여 TimeSignatures를 처음부터 생성할 수도 있습니다.
+ * A TimeSignatures can also be created from scratch using the constructor.
  *
- * 이 클래스의 가장 유용한 사용법은
- * 마디와 분수를 비트 번호로 변환하는 것입니다.
+ * The most useful application of this class is
+ * converting a measure and fraction into a beat number.
  *
  * ```js
  * timeSignatures.measureToBeat(0, 0.000) // =>  0.0
@@ -30,45 +30,46 @@ export class TimeSignatures {
     }
 
     /**
-     * 지정된 마디의 크기를 설정합니다.
-     * @param measure 마디 번호로, 0부터 시작합니다.
-     * @param value 마디 크기.
-     *  예를 들어, 1.0 크기는 일반적인 4/4 박자를 나타내며,
-     *  0.75 크기는 3/4 또는 6/8 박자를 나타냅니다.
+     * Sets the size of the specified measure.
+     * @param measure the measure number, starting from 0.
+     * @param value the measure size.
+     *  For example, a size of 1.0 represents a common 4/4 time signature,
+     *  while a size of 0.75 represents 3/4 or 6/8 time.
      */
     set(measure: number, value: number) {
-        // BUG-P4: 0 이하 크기는 무한루프/0-나눗셈 유발 → 최솟값 보장
+        // BUG-P4: sizes <= 0 cause infinite loops / division by zero -> enforce a minimum
         this._values[measure] = value > 0 ? value : 1;
     }
 
     /**
-     * 지정된 마디의 크기를 가져옵니다.
-     * @param measure 마디 번호를 나타냅니다.
-     * @returns 마디의 크기.
-     *  기본적으로 마디는 크기 1을 가집니다.
+     * Gets the size of the specified measure.
+     * @param measure the measure number.
+     * @returns the size of the measure.
+     *  By default, a measure has size 1.
      */
     get(measure: number): number {
         return this._values[measure] || 1;
     }
 
     /**
-     * 지정된 마디의 비트 수를 가져옵니다.
+     * Gets the number of beats in the specified measure.
      *
-     * 한 비트가 4/4 박자에서 4분 음표와 동일하므로,
-     * 이는 `(timeSignatures.get(measure) * 4)`와 동일합니다.
-     * @param measure 마디 번호를 나타냅니다.
-     * @returns 마디의 비트 단위 크기.
+     * Since one beat is equivalent to a quarter note in 4/4 time,
+     * this is the same as `(timeSignatures.get(measure) * 4)`.
+     * @param measure the measure number.
+     * @returns the size of the measure in beats.
      */
     getBeats(measure: number): number {
         return this.get(measure) * 4;
     }
 
     /**
-     * 마디 번호와 해당 마디 내의 분수를 비트 번호로 변환합니다.
+     * Converts a measure number and a fraction within that measure
+     * into a beat number.
      *
-     * @param measure 마디 번호.
-     * @param fraction 마디의 분수,
-     * @returns 마디 0부터의 비트 수.
+     * @param measure the measure number.
+     * @param fraction the fraction of the measure,
+     * @returns the number of beats since measure 0.
      */
     measureToBeat(measure: number, fraction: number): number {
         let sum = 0;
@@ -77,18 +78,18 @@ export class TimeSignatures {
     }
 
     /**
-     * 비트 번호를 마디 번호와 마디 내 분수로 변환합니다.
-     * measureToBeat의 역함수입니다.
+     * Converts a beat number into a measure number and a fraction within the measure.
+     * This is the inverse of measureToBeat.
      *
      * ```js
      * timeSignatures.beatToMeasure(0.0)  // => { measure: 0, fraction: 0.0 }
      * timeSignatures.beatToMeasure(2.0)  // => { measure: 0, fraction: 0.5 }
      * timeSignatures.beatToMeasure(4.0)  // => { measure: 1, fraction: 0.0 }
-     * timeSignatures.beatToMeasure(5.5)  // => { measure: 1, fraction: 0.5 } (3/4 마디일 때)
+     * timeSignatures.beatToMeasure(5.5)  // => { measure: 1, fraction: 0.5 } (for a 3/4 measure)
      * ```
      *
-     * @param beat 비트 번호 (0부터 시작)
-     * @param maxMeasure 탐색 상한 마디 수 (기본: 999)
+     * @param beat the beat number (starting from 0)
+     * @param maxMeasure upper bound of measures to search (default: 999)
      * @returns { measure, fraction }
      */
     beatToMeasure(beat: number, maxMeasure: number = 999): { measure: number; fraction: number } {
@@ -102,7 +103,7 @@ export class TimeSignatures {
             }
             sum += beats;
         }
-        // beat가 maxMeasure를 초과하면 4/4 가정으로 추정
+        // If the beat exceeds maxMeasure, estimate assuming 4/4
         const remaining = beat - sum;
         const extraMeasures = Math.floor(remaining / 4);
         const extraFraction = (remaining % 4) / 4;
@@ -110,7 +111,7 @@ export class TimeSignatures {
     }
 
     /**
-     * Map<number, number> (에디터 형식)에서 TimeSignatures를 생성합니다.
+     * Creates a TimeSignatures from a Map<number, number> (editor format).
      */
     static fromMap(map: Map<number, number>): TimeSignatures {
         const ts = new TimeSignatures();
@@ -121,7 +122,7 @@ export class TimeSignatures {
     }
 
     /**
-     * TimeSignatures를 Map<number, number>로 변환합니다.
+     * Converts the TimeSignatures to a Map<number, number>.
      */
     toMap(): Map<number, number> {
         const map = new Map<number, number>();

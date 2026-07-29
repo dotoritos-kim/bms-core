@@ -1,28 +1,28 @@
 /**
  * BMS Writer Module
  *
- * BMS 차트 데이터를 BMS 파일 포맷으로 직렬화하는 모듈입니다.
- * 기존 parser의 역방향 기능을 제공합니다.
+ * Module that serializes BMS chart data into the BMS file format.
+ * Provides the inverse functionality of the existing parser.
  *
- * 주요 기능:
- * - BMSChart 객체를 BMS 파일 문자열로 변환
- * - 편집된 노트 데이터를 채널 데이터로 변환
- * - 헤더 정보 생성
- * - 다양한 BMS 포맷 지원 (bms, bme, bml)
+ * Main features:
+ * - Converts a BMSChart object into a BMS file string
+ * - Converts edited note data into channel data
+ * - Generates header information
+ * - Supports various BMS formats (bms, bme, bml)
  *
- * 사용 예시:
+ * Usage example:
  * ```ts
  * import { BMSWriter, BMSParser } from '@/lib/bms';
  *
- * // 파싱
+ * // Parse
  * const parser = new BMSParser();
  * const content = await parser.fetchFromUrl(url);
  * parser.compileString(content);
  *
- * // 편집 가능한 데이터로 변환
+ * // Convert into editable data
  * const editableChart = BMSWriter.fromBMSChart(parser.chart);
  *
- * // 노트 수정
+ * // Modify notes
  * editableChart.notes.push({
  *   id: 'new-note-1',
  *   beat: 4,
@@ -34,7 +34,7 @@
  *   channel: '11',
  * });
  *
- * // BMS 파일로 변환
+ * // Convert into a BMS file
  * const bmsContent = BMSWriter.write(editableChart);
  * ```
  */
@@ -58,7 +58,7 @@ import {
 import type { BMSChart } from '../parser/bms/chart';
 import { EditableChartBuilder, buildEmptyChart } from './editableChartBuilder';
 
-// 타입 재내보내기
+// Type re-exports
 export type {
   BMSWriterOptions,
   EditableBMSChart,
@@ -70,12 +70,12 @@ export type {
   ReverseChannelMapping,
 };
 
-// 함수 재내보내기
+// Function re-exports
 export { writeHeaders, createEmptyHeaders, parseHeadersToData };
 export { writeChannels, IIDX_SP_REVERSE, IIDX_DP_REVERSE };
 
 /**
- * BMS Writer 클래스
+ * BMS Writer class
  */
 export class BMSWriter {
   private options: BMSWriterOptions;
@@ -91,7 +91,7 @@ export class BMSWriter {
   }
 
   /**
-   * EditableBMSChart를 BMS 파일 문자열로 변환
+   * Converts an EditableBMSChart into a BMS file string
    */
   write(
     chart: EditableBMSChart,
@@ -99,13 +99,13 @@ export class BMSWriter {
   ): string {
     const lines: string[] = [];
 
-    // LNOBJ 모드: 헤더에 lnobj 값 설정, lntype 제거
+    // LNOBJ mode: set the lnobj value in the headers, remove lntype
     const headers = { ...chart.headers };
     const lnMode = this.options.lnMode || 'channel';
     if (lnMode === 'lnobj') {
       let lnObjValue = this.options.lnObjValue || headers.lnobj || '';
       if (!lnObjValue) {
-        // 미사용 WAV ID 중 가장 큰 값을 LNOBJ 마커로 자동 할당
+        // Auto-assign the largest unused WAV ID as the LNOBJ marker
         const usedIds = new Set<string>();
         for (const key of headers.wav.keys()) usedIds.add(key.toUpperCase());
         for (const n of chart.notes) {
@@ -122,47 +122,47 @@ export class BMSWriter {
       if (lnObjValue) {
         headers.lnobj = lnObjValue;
         headers.lntype = undefined;
-        // WAV 정의에 LNOBJ용 무음 항목 추가 (없으면)
+        // Add a silent WAV definition entry for LNOBJ (if missing)
         if (!headers.wav.has(lnObjValue) && !headers.wav.has(lnObjValue.toLowerCase())) {
           headers.wav = new Map(headers.wav);
-          // LNOBJ 마커는 WAV 정의 없이도 동작하지만 일부 플레이어 호환을 위해 추가
+          // The LNOBJ marker works without a WAV definition, but it is added for compatibility with some players
         }
         this.options.lnObjValue = lnObjValue;
       }
     } else {
-      // 채널 모드: lnobj 제거, lntype 유지 (있으면)
+      // Channel mode: remove lnobj, keep lntype (if present)
       if (!headers.lntype && chart.notes.some(n => n.endBeat !== undefined)) {
         headers.lntype = 1;
       }
     }
 
-    // 헤더 작성
+    // Write headers
     lines.push(...writeHeaders(headers, this.options));
 
-    // 채널 데이터 작성
+    // Write channel data
     lines.push(...writeChannels(chart, mapping, this.options));
 
-    // 줄바꿈으로 연결
+    // Join with line breaks
     return lines.join('\r\n');
   }
 
   /**
-   * BMSChart 객체에서 EditableBMSChart 생성.
-   * 내부 로직은 EditableChartBuilder 에 위임합니다.
+   * Creates an EditableBMSChart from a BMSChart object.
+   * The internal logic is delegated to EditableChartBuilder.
    */
   static fromBMSChart(chart: BMSChart): EditableBMSChart {
     return new EditableChartBuilder(chart).build();
   }
 
   /**
-   * 빈 EditableBMSChart 생성
+   * Creates an empty EditableBMSChart
    */
   static createEmptyChart(): EditableBMSChart {
     return buildEmptyChart();
   }
 
   /**
-   * EditableBMSChart 복제 (deep copy)
+   * Clones an EditableBMSChart (deep copy)
    */
   static cloneChart(chart: EditableBMSChart): EditableBMSChart {
     return {
@@ -188,7 +188,7 @@ export class BMSWriter {
   }
 
   /**
-   * 두 차트 비교하여 변경사항 감지
+   * Compares two charts and detects changes
    */
   static diffCharts(
     original: EditableBMSChart,
@@ -205,7 +205,7 @@ export class BMSWriter {
       timeSignatureChanges: [],
     };
 
-    // 헤더 변경 감지
+    // Detect header changes
     const headerKeys: (keyof BMSHeaderData)[] = [
       'player', 'genre', 'title', 'subtitle', 'artist', 'subartist',
       'bpm', 'playlevel', 'rank', 'total', 'difficulty',
@@ -220,7 +220,7 @@ export class BMSWriter {
       }
     }
 
-    // 노트 변경 감지
+    // Detect note changes
     const originalNoteIds = new Set(original.notes.map((n) => n.id));
     const modifiedNoteIds = new Set(modified.notes.map((n) => n.id));
     const originalNoteMap = new Map(original.notes.map((n) => [n.id, n]));
@@ -255,7 +255,7 @@ export class BMSWriter {
 }
 
 /**
- * 차트 변경사항
+ * Chart changes
  */
 export interface ChartDiff {
   headerChanges: Array<{
@@ -279,5 +279,5 @@ export interface ChartDiff {
   }>;
 }
 
-// 기본 내보내기
+// Default export
 export default BMSWriter;

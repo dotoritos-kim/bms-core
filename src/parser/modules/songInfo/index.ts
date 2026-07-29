@@ -13,20 +13,20 @@ export interface ISongInfoData {
 }
 
 /**
- * SongInfo는 곡 정보(예: 제목, 아티스트, 장르)를 나타냅니다.
+ * SongInfo represents song information (e.g. title, artist, genre).
  *
- * ## 예제
+ * ## Example
  *
- * 다음과 같은 BMS가 있다고 가정해봅시다:
+ * Suppose we have a BMS like this:
  *
  * ```
  * #TITLE Exargon [HYPER]
  * ```
  *
- * 이를 Compiler를 사용해 BMSChart로 파싱한 후,
- * `fromBMSChart()`를 사용하여 SongInfo를 생성할 수 있습니다:
+ * After parsing it into a BMSChart using the Compiler,
+ * a SongInfo can be created with `fromBMSChart()`:
  *
- * 그런 다음 속성에 접근하여 곡 정보를 조회할 수 있습니다.
+ * The song information can then be queried through its properties.
  *
  */
 export class SongInfo implements ISongInfoData {
@@ -38,51 +38,53 @@ export class SongInfo implements ISongInfoData {
     difficulty: number;
     level: number;
     /**
-     * 주어진 데이터로 SongInfo를 생성합니다.
-     * @param info 이 인스턴스에 설정할 속성들
+     * Creates a SongInfo from the given data.
+     * @param info the properties to set on this instance
      */
     constructor(info: Record<string, unknown>) {
-        /** 곡 제목 */
+        /** Song title */
         this.title = 'NO TITLE';
-        /** 곡 아티스트 */
+        /** Song artist */
         this.artist = 'NO ARTIST';
-        /** 곡 장르 */
+        /** Song genre */
         this.genre = 'NO GENRE';
         /**
-         * 곡의 부제목, 요소당 한 줄씩.
-         * 부제목은 NORMAL, HYPER, ANOTHER와 같이 난이도 이름을 나타내는 데 사용할 수 있습니다.
+         * The song's subtitles, one line per element.
+         * Subtitles can be used to indicate the difficulty name,
+         * such as NORMAL, HYPER, ANOTHER.
          * @type {string[]}
          */
         this.subtitles = [];
         /**
-         * 곡의 다른 아티스트, 요소당 한 명씩.
+         * The song's other artists, one artist per element.
          * @type {string[]}
          */
         this.subartists = [];
         /**
-         * 난이도.
-         * 숫자의 의미는 BMS의 [`#DIFFICULTY`](http:*hitkey.nekokan.dyndns.info/cmds.htm#DIFFICULTY) 헤더와 동일합니다.
+         * The difficulty.
+         * The meaning of the number is the same as BMS's
+         * [`#DIFFICULTY`](http:*hitkey.nekokan.dyndns.info/cmds.htm#DIFFICULTY) header.
          *
-         * | 난이도 | 의미      |
-         * | ------:|:--------:|
-         * |      1 | BEGINNER |
-         * |      2 | NORMAL   |
-         * |      3 | HYPER    |
-         * |      4 | ANOTHER  |
-         * |      5 | INSANE   |
+         * | Difficulty | Meaning  |
+         * | ----------:|:--------:|
+         * |          1 | BEGINNER |
+         * |          2 | NORMAL   |
+         * |          3 | HYPER    |
+         * |          4 | ANOTHER  |
+         * |          5 | INSANE   |
          */
         this.difficulty = 0;
         /**
-         * 곡의 레벨.
-         * BMS 차트에서 변환할 때, 이 값은 `#PLAYLEVEL` 헤더의 값입니다.
+         * The song's level.
+         * When converted from a BMS chart, this is the value of the `#PLAYLEVEL` header.
          */
         this.level = 0;
         if (info) assign(this, info);
     }
 
     /**
-     * {BMSChart}에서 새로운 {SongInfo} 객체를 생성합니다.
-     * @param chart {SongInfo}를 생성할 {BMSChart}
+     * Creates a new {SongInfo} object from a {BMSChart}.
+     * @param chart the {BMSChart} to create the {SongInfo} from
      */
     static fromBMSChart(chart: BMSChart) {
         void BMSChart;

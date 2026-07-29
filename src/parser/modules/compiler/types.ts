@@ -1,37 +1,38 @@
-// 컴파일러 결과 타입 정의 (REFACTOR-PLAN §5 P3)
+// Compiler result type definitions (REFACTOR-PLAN §5 P3)
 //
-// 외부 호환성을 위해 기존 `compile()` 리턴 필드는 모두 그대로 유지하면서,
-// 다음을 추가합니다:
-//   - `CompileWarning.code`: 경고 분류 코드 (외부에서 분류·필터링 가능)
-//   - `CompileStats`: 통계 필드 그룹화 (alias)
+// For external compatibility every existing `compile()` return field is kept
+// as-is, while adding:
+//   - `CompileWarning.code`: warning classification code (allows external classification/filtering)
+//   - `CompileStats`: grouped statistics fields (alias)
 //
-// 타입 자체는 외부 export 대상이 아니지만, `BMSCompileOptions`와 동일한 모듈에서
-// 노출되어 컴파일러 결과를 정확하게 받을 수 있도록 합니다.
+// The types themselves are not external export targets, but they are exposed
+// from the same module as `BMSCompileOptions` so compiler results can be received with precise types.
 
 import type { BMSChart } from '../../bms/chart';
 
 /**
- * 컴파일 중 발견된 경고의 분류 코드.
+ * Classification code for warnings found during compilation.
  *
- * - `INVALID_DIRECTIVE`: 알 수 없는 헤더/명령 라인
+ * - `INVALID_DIRECTIVE`: unknown header/directive line
  *
- * 신규 코드는 추가만 가능하며 기존 값은 유지됩니다 (semver patch 호환).
+ * New codes may only be added; existing values are kept (semver patch compatible).
  */
 export type WarningCode = 'INVALID_DIRECTIVE';
 
 /**
- * 컴파일 중 발견된 경고. 기존 필드(`lineNumber`, `message`)에 더해
- * 새 `code` 필드가 추가되었습니다 — 외부 코드의 호환성을 깨지 않는 추가 변경입니다.
+ * A warning found during compilation. In addition to the existing fields
+ * (`lineNumber`, `message`), a new `code` field was added — an additive change
+ * that does not break compatibility for external code.
  */
 export interface CompileWarning {
     lineNumber: number;
     message: string;
-    /** 경고 분류 코드. 신규 추가 필드 (non-breaking). */
+    /** Warning classification code. Newly added field (non-breaking). */
     code: WarningCode;
 }
 
 /**
- * BMS 컴파일 통계.
+ * BMS compile statistics.
  */
 export interface CompileStats {
     headerSentences: number;
@@ -42,7 +43,7 @@ export interface CompileStats {
 }
 
 /**
- * WAV/BMP 헤더 수집 통계 (디버그용).
+ * WAV/BMP header collection stats (for debugging).
  */
 export interface WavStats {
     total: number;
@@ -50,16 +51,16 @@ export interface WavStats {
 }
 
 /**
- * `compile()` 함수의 리턴 타입.
+ * Return type of the `compile()` function.
  *
- * 외부 호환성을 위해 기존 평탄한 필드(`headerSentences` 등)는 모두 유지하며,
- * 새 `code` 필드는 `warnings[i]`에 추가됩니다.
+ * For external compatibility every existing flat field (`headerSentences`, etc.)
+ * is kept, and the new `code` field is added to `warnings[i]`.
  */
 export interface CompileResult extends CompileStats {
-    /** 생성된 차트 */
+    /** The generated chart */
     chart: BMSChart;
-    /** 컴파일 중 발견된 경고 (각 항목에 `code` 포함) */
+    /** Warnings found during compilation (each item includes `code`) */
     warnings: CompileWarning[];
-    /** WAV 헤더 수집 통계 (디버그) */
+    /** WAV header collection stats (debug) */
     wavStats: WavStats;
 }

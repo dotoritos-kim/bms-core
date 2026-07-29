@@ -1,6 +1,6 @@
 /**
  * BMS Channel Writer
- * 노트 데이터를 BMS 채널 문자열로 변환
+ * Converts note data into BMS channel strings
  */
 
 import type {
@@ -16,7 +16,7 @@ import type {
 import type { NoteType } from '../parser';
 
 /**
- * beat를 measure와 fraction으로 변환 (박자표 고려)
+ * Converts a beat into a measure and fraction (taking time signatures into account)
  */
 function beatToMeasureFraction(
   beat: number,
@@ -43,7 +43,7 @@ function beatToMeasureFraction(
 }
 
 /**
- * IIDX SP 역매핑 (컬럼 -> 채널)
+ * IIDX SP reverse mapping (column -> channel)
  */
 export const IIDX_SP_REVERSE: ReverseChannelMapping = {
   playable: new Map([
@@ -93,7 +93,7 @@ export const IIDX_SP_REVERSE: ReverseChannelMapping = {
 };
 
 /**
- * IIDX DP 역매핑
+ * IIDX DP reverse mapping
  */
 export const IIDX_DP_REVERSE: ReverseChannelMapping = {
   playable: new Map([
@@ -147,25 +147,25 @@ export const IIDX_DP_REVERSE: ReverseChannelMapping = {
 };
 
 /**
- * 최대공약수 계산
+ * Computes the greatest common divisor
  */
 function gcd(a: number, b: number): number {
   return b === 0 ? a : gcd(b, a % b);
 }
 
 /**
- * 분수를 주어진 resolution 기준으로 반올림
+ * Rounds a fraction to the given resolution
  */
 function quantizeFraction(fraction: number, resolution: number): number {
   return Math.round(fraction * resolution) / resolution;
 }
 
-/** 1 beat = 960 ticks (MIDI 표준) */
+/** 1 beat = 960 ticks (MIDI standard) */
 const TICKS_PER_BEAT = 960;
 
 /**
- * 0마디부터 targetMeasure 직전까지의 누적 tick 수
- * (tickToFractionInMeasure의 역계산에 필요)
+ * Total tick count from measure 0 up to (but not including) targetMeasure
+ * (needed for the inverse calculation of tickToFractionInMeasure)
  */
 function getTotalTicksUpToMeasure(
   targetMeasure: number,
@@ -180,8 +180,8 @@ function getTotalTicksUpToMeasure(
 }
 
 /**
- * Tick 기반 fraction 계산 (부동소수점 오차 없음)
- * tick이 있는 노트에서는 이 함수로 fraction을 직접 계산
+ * Tick-based fraction calculation (no floating point error)
+ * For notes that have a tick, this function computes the fraction directly
  */
 function tickToFractionInMeasure(
   tick: number,
@@ -204,15 +204,15 @@ function tickToFractionInMeasure(
 }
 
 /**
- * 분수들의 최소 분해능 계산 (레거시 — tick 없는 노트용)
+ * Computes the minimum resolution of the fractions (legacy — for notes without ticks)
  */
 function findMinResolution(fractions: number[], maxResolution: number = 192): number {
   if (fractions.length === 0) return 1;
 
-  // 모든 분수를 maxResolution 기준으로 정수로 변환
+  // Convert all fractions to integers based on maxResolution
   const integers = fractions.map((f) => Math.round(f * maxResolution));
 
-  // GCD 계산
+  // Compute the GCD
   let divisor = maxResolution;
   for (const n of integers) {
     if (n > 0) {
@@ -224,8 +224,8 @@ function findMinResolution(fractions: number[], maxResolution: number = 192): nu
 }
 
 /**
- * Tick 배열에서 BMS 출력에 필요한 최소 해상도 계산
- * 예: 64분 셋잇단(10ticks) → 3840/gcd(3840,10) = 3840/10 = 384
+ * Computes the minimum resolution needed for BMS output from an array of ticks
+ * e.g. 64th-note triplet (10 ticks) -> 3840/gcd(3840,10) = 3840/10 = 384
  */
 function findMinResolutionFromTicks(
   ticks: number[],
@@ -242,7 +242,7 @@ function findMinResolutionFromTicks(
 }
 
 /**
- * 노트 타입에서 채널 매핑 가져오기
+ * Gets the channel mapping for a note type
  */
 function getChannelMap(
   noteType: NoteType | undefined,
@@ -262,19 +262,19 @@ function getChannelMap(
 }
 
 /**
- * 노트의 채널 번호 결정
+ * Determines the channel number of a note
  */
 function getNoteChannel(
   note: EditableBMSNote,
   mapping: ReverseChannelMapping,
   lnMode: 'channel' | 'lnobj' = 'channel'
 ): string | null {
-  // BGM 노트
+  // BGM notes
   if (note.noteType === 'bgm' || !note.column) {
     return '01';
   }
 
-  // LNOBJ 모드에서는 LN도 playable 채널 사용 (5x/6x 대신 1x/2x)
+  // In LNOBJ mode, LNs also use playable channels (1x/2x instead of 5x/6x)
   const usePlayableForLN = lnMode === 'lnobj' && !!note.endBeat;
   const channelMap = usePlayableForLN
     ? mapping.playable
@@ -284,19 +284,19 @@ function getNoteChannel(
 }
 
 /**
- * 이벤트 타입 — tick이 있으면 tick 기반 해상도 계산에 사용
+ * Event type — when a tick is present, it is used for tick-based resolution calculation
  */
 type ChannelEvent = {
   fraction: number;
   value: string;
-  /** measure 내 tick 오프셋 (tick 데이터 있는 노트만) */
+  /** Tick offset within the measure (only for notes with tick data) */
   tickOffset?: number;
-  /** 이 마디의 총 tick 수 (tick 데이터 있는 노트만) */
+  /** Total tick count of this measure (only for notes with tick data) */
   ticksInMeasure?: number;
 };
 
 /**
- * 마디의 채널 데이터 생성
+ * Creates channel data for a measure
  */
 function createChannelDataForMeasure(
   measure: number,
@@ -306,7 +306,7 @@ function createChannelDataForMeasure(
 ): ChannelData | null {
   if (events.length === 0) return null;
 
-  // tick 데이터가 모든 이벤트에 있으면 tick 기반 최소 해상도 계산 (손실 없음)
+  // If all events have tick data, compute the tick-based minimum resolution (lossless)
   const tickEvents = events.filter(
     (e) => e.tickOffset !== undefined && e.ticksInMeasure !== undefined
   );
@@ -316,18 +316,18 @@ function createChannelDataForMeasure(
     const ticksInMeasure = tickEvents[0].ticksInMeasure!;
     minRes = findMinResolutionFromTicks(ticks, ticksInMeasure);
   } else {
-    // 레거시 경로: fraction 기반 (최대 192)
+    // Legacy path: fraction-based (max 192)
     const fractions = events.map((e) => e.fraction);
     minRes = findMinResolution(fractions, resolution);
   }
 
-  // 데이터 배열 생성 (각 슬롯은 2문자)
+  // Create the data array (each slot is 2 characters)
   const dataArray: string[] = new Array(minRes).fill('00');
 
   for (const event of events) {
     let slot: number;
     if (event.tickOffset !== undefined && event.ticksInMeasure !== undefined && event.ticksInMeasure > 0) {
-      // tick 기반 슬롯 계산 (정확)
+      // Tick-based slot calculation (exact)
       slot = Math.round((event.tickOffset / event.ticksInMeasure) * minRes);
     } else {
       slot = Math.round(event.fraction * minRes);
@@ -337,7 +337,7 @@ function createChannelDataForMeasure(
     }
   }
 
-  // 모든 값이 00이면 null 반환
+  // Return null if every value is 00
   if (dataArray.every((v) => v === '00')) {
     return null;
   }
@@ -350,8 +350,9 @@ function createChannelDataForMeasure(
 }
 
 /**
- * 같은 슬롯에 겹치는 이벤트를 여러 레이어로 분리
- * BGM 채널(01)에서 동시에 재생되는 키음을 각각 별도의 #xxx01: 라인으로 출력하기 위함
+ * Splits events that overlap in the same slot into multiple layers
+ * Used so that keysounds playing simultaneously on the BGM channel (01)
+ * are each written on a separate #xxx01: line
  */
 function splitOverlappingEvents(
   events: ChannelEvent[],
@@ -359,12 +360,12 @@ function splitOverlappingEvents(
 ): Array<ChannelEvent[]> {
   if (events.length === 0) return [];
 
-  // 슬롯별로 이벤트 그룹화
+  // Group events by slot
   const slotMap = new Map<number, ChannelEvent[]>();
   for (const event of events) {
     let slot: number;
     if (event.tickOffset !== undefined && event.ticksInMeasure !== undefined && event.ticksInMeasure > 0) {
-      // tick 기반 임시 슬롯 (충돌 감지용, 최대 3840 기준)
+      // Tick-based temporary slot (for collision detection, based on max 3840)
       slot = Math.round((event.tickOffset / event.ticksInMeasure) * 3840);
     } else {
       slot = Math.round(quantizeFraction(event.fraction, resolution) * resolution);
@@ -375,14 +376,14 @@ function splitOverlappingEvents(
     slotMap.get(slot)!.push(event);
   }
 
-  // 겹침이 없으면 단일 레이어 반환
+  // Return a single layer if there is no overlap
   let maxOverlap = 0;
   for (const group of slotMap.values()) {
     if (group.length > maxOverlap) maxOverlap = group.length;
   }
   if (maxOverlap <= 1) return [events];
 
-  // 레이어별로 분배: 각 슬롯의 n번째 이벤트를 n번째 레이어에 배치
+  // Distribute across layers: place the nth event of each slot in the nth layer
   const layers: Array<ChannelEvent[]> = [];
   for (const group of slotMap.values()) {
     for (let i = 0; i < group.length; i++) {
@@ -395,7 +396,7 @@ function splitOverlappingEvents(
 }
 
 /**
- * 노트를 채널 데이터로 변환
+ * Converts notes into channel data
  */
 export function writeNoteChannels(
   notes: EditableBMSNote[],
@@ -408,7 +409,7 @@ export function writeNoteChannels(
   const lnObjValue = options.lnObjValue || '';
   const channelDataList: ChannelData[] = [];
 
-  // 마디별, 채널별로 노트 그룹화
+  // Group notes by measure and channel
   const measureChannelMap = new Map<number, Map<string, ChannelEvent[]>>();
 
   for (const note of notes) {
@@ -421,28 +422,28 @@ export function writeNoteChannels(
       : null;
     const noteMeasure = tickPos?.measure ?? note.measure;
     const noteFraction = tickPos?.fraction ?? note.fraction;
-    // tick 데이터 없으면 레거시 양자화 (192 기준)
+    // Legacy quantization (based on 192) when there is no tick data
     const quantizedFraction = tickPos ? noteFraction : quantizeFraction(noteFraction, resolution);
 
-    // tick 기반 이벤트 추가 정보
+    // Additional tick-based event information
     const tickOffset = tickPos
       ? (note.tick! - getTotalTicksUpToMeasure(noteMeasure, timeSignatures))
       : undefined;
     const ticksInMeasureForNote = tickPos?.ticksInMeasure;
 
-    // 마디 맵 가져오기/생성
+    // Get/create the measure map
     if (!measureChannelMap.has(noteMeasure)) {
       measureChannelMap.set(noteMeasure, new Map());
     }
     const channelMap = measureChannelMap.get(noteMeasure)!;
 
-    // 채널 이벤트 배열 가져오기/생성
+    // Get/create the channel event array
     if (!channelMap.has(channel)) {
       channelMap.set(channel, []);
     }
     const events = channelMap.get(channel)!;
 
-    // 노트 추가
+    // Add the note
     events.push({
       fraction: quantizedFraction,
       value: note.keysound.toUpperCase().padStart(2, '0').slice(0, 2),
@@ -450,7 +451,7 @@ export function writeNoteChannels(
       ticksInMeasure: ticksInMeasureForNote,
     });
 
-    // 멀티 키음 레이어 출력 (additionalKeysounds)
+    // Emit multi-keysound layers (additionalKeysounds)
     if (note.additionalKeysounds && note.additionalKeysounds.length > 0) {
       for (const layer of note.additionalKeysounds) {
         let layerChannel: string | null = null;
@@ -477,7 +478,7 @@ export function writeNoteChannels(
       }
     }
 
-    // 롱노트 끝 처리
+    // Handle long note ends
     if (note.endBeat !== undefined && note.noteType !== 'landmine') {
       const endPos = note.endTick !== undefined
         ? tickToFractionInMeasure(note.endTick, timeSignatures)
@@ -490,7 +491,7 @@ export function writeNoteChannels(
       const endTicksInMeasure = note.endTick !== undefined ? (endPos as ReturnType<typeof tickToFractionInMeasure>).ticksInMeasure : undefined;
 
       if (lnMode === 'lnobj' && lnObjValue && note.column) {
-        // LNOBJ 모드: playable 채널에 LNOBJ 마커를 끝 위치에 기록
+        // LNOBJ mode: write the LNOBJ marker at the end position on the playable channel
         const playableChannel = mapping.playable.get(note.column);
         if (playableChannel) {
           if (!measureChannelMap.has(endMeasure)) {
@@ -508,7 +509,7 @@ export function writeNoteChannels(
           });
         }
       } else {
-        // 채널 모드: 5x/6x 채널에 끝 이벤트 추가
+        // Channel mode: add the end event on the 5x/6x channel
         const lnChannelMap = getChannelMap(note.noteType, true, mapping);
         const lnChannel = note.column ? lnChannelMap.get(note.column) : null;
         if (lnChannel) {
@@ -530,11 +531,11 @@ export function writeNoteChannels(
     }
   }
 
-  // 채널 데이터 생성
+  // Generate channel data
   for (const [measure, channelMap] of measureChannelMap) {
     for (const [channel, events] of channelMap) {
-      // BGM 채널(01)은 같은 슬롯에 여러 이벤트가 겹칠 수 있으므로
-      // 레이어별로 분리하여 여러 #xxx01: 라인을 생성해야 함
+      // On the BGM channel (01), multiple events can overlap in the same slot,
+      // so they must be split into layers to produce multiple #xxx01: lines
       if (channel === '01') {
         const layers = splitOverlappingEvents(events, resolution);
         for (const layerEvents of layers) {
@@ -562,7 +563,7 @@ export function writeNoteChannels(
     }
   }
 
-  // 정렬: 마디 번호 -> 채널 번호
+  // Sort: measure number -> channel number
   channelDataList.sort((a, b) => {
     if (a.measure !== b.measure) return a.measure - b.measure;
     return a.channel.localeCompare(b.channel);
@@ -572,7 +573,7 @@ export function writeNoteChannels(
 }
 
 /**
- * BPM 변경 이벤트를 채널 데이터로 변환
+ * Converts BPM change events into channel data
  */
 export function writeBpmChannels(
   bpmChanges: BMSBpmChange[],
@@ -581,7 +582,7 @@ export function writeBpmChannels(
   const resolution = options.resolution || 192;
   const channelDataList: ChannelData[] = [];
 
-  // 마디별로 그룹화 (채널 03: 직접 BPM, 채널 08: 확장 BPM)
+  // Group by measure (channel 03: direct BPM, channel 08: extended BPM)
   const measureMap03 = new Map<number, Array<{ fraction: number; value: string }>>();
   const measureMap08 = new Map<number, Array<{ fraction: number; value: string }>>();
 
@@ -589,7 +590,7 @@ export function writeBpmChannels(
     const quantizedFraction = quantizeFraction(bpmChange.fraction, resolution);
 
     if (bpmChange.extended && bpmChange.bpmDefKey) {
-      // 확장 BPM (채널 08)
+      // Extended BPM (channel 08)
       if (!measureMap08.has(bpmChange.measure)) {
         measureMap08.set(bpmChange.measure, []);
       }
@@ -598,7 +599,7 @@ export function writeBpmChannels(
         value: bpmChange.bpmDefKey.toUpperCase().padStart(2, '0'),
       });
     } else {
-      // 직접 BPM (채널 03) - 정수만 지원, 1-255 범위
+      // Direct BPM (channel 03) - integers only, range 1-255
       const bpmInt = Math.min(255, Math.max(1, Math.round(bpmChange.bpm)));
       if (!measureMap03.has(bpmChange.measure)) {
         measureMap03.set(bpmChange.measure, []);
@@ -610,13 +611,13 @@ export function writeBpmChannels(
     }
   }
 
-  // 채널 03 데이터 생성
+  // Generate channel 03 data
   for (const [measure, events] of measureMap03) {
     const channelData = createChannelDataForMeasure(measure, '03', events, resolution);
     if (channelData) channelDataList.push(channelData);
   }
 
-  // 채널 08 데이터 생성
+  // Generate channel 08 data
   for (const [measure, events] of measureMap08) {
     const channelData = createChannelDataForMeasure(measure, '08', events, resolution);
     if (channelData) channelDataList.push(channelData);
@@ -626,7 +627,7 @@ export function writeBpmChannels(
 }
 
 /**
- * STOP 이벤트를 채널 데이터로 변환
+ * Converts STOP events into channel data
  */
 export function writeStopChannels(
   stopEvents: BMSStopEvent[],
@@ -635,7 +636,7 @@ export function writeStopChannels(
   const resolution = options.resolution || 192;
   const channelDataList: ChannelData[] = [];
 
-  // 마디별로 그룹화
+  // Group by measure
   const measureMap = new Map<number, Array<{ fraction: number; value: string }>>();
 
   for (const stopEvent of stopEvents) {
@@ -655,7 +656,7 @@ export function writeStopChannels(
     });
   }
 
-  // 채널 09 데이터 생성
+  // Generate channel 09 data
   for (const [measure, events] of measureMap) {
     const channelData = createChannelDataForMeasure(measure, '09', events, resolution);
     if (channelData) channelDataList.push(channelData);
@@ -665,7 +666,7 @@ export function writeStopChannels(
 }
 
 /**
- * BGA 이벤트를 채널 데이터로 변환
+ * Converts BGA events into channel data
  */
 export function writeBgaChannels(
   bgaEvents: BMSBgaEvent[],
@@ -674,7 +675,7 @@ export function writeBgaChannels(
   const resolution = options.resolution || 192;
   const channelDataList: ChannelData[] = [];
 
-  // 마디별, 레이어별로 그룹화
+  // Group by measure and layer
   const measureLayerMap = new Map<number, Map<string, Array<{ fraction: number; value: string }>>>();
 
   for (const bgaEvent of bgaEvents) {
@@ -694,7 +695,7 @@ export function writeBgaChannels(
     });
   }
 
-  // 채널 데이터 생성
+  // Generate channel data
   for (const [measure, layerMap] of measureLayerMap) {
     for (const [layer, events] of layerMap) {
       const channelData = createChannelDataForMeasure(measure, layer, events, resolution);
@@ -706,7 +707,7 @@ export function writeBgaChannels(
 }
 
 /**
- * 박자표를 채널 데이터로 변환 (채널 02)
+ * Converts time signatures into channel data (channel 02)
  */
 export function writeTimeSignatureChannels(
   timeSignatures: Map<number, number>,
@@ -715,7 +716,7 @@ export function writeTimeSignatureChannels(
   const channelDataList: ChannelData[] = [];
 
   for (const [measure, size] of timeSignatures) {
-    // 1.0이 아닌 박자표만 출력
+    // Only write time signatures other than 1.0
     if (size !== 1.0) {
       channelDataList.push({
         channel: '02',
@@ -729,7 +730,7 @@ export function writeTimeSignatureChannels(
 }
 
 /**
- * 채널 데이터를 BMS 문자열로 변환
+ * Converts channel data into a BMS string
  */
 export function channelDataToString(channelData: ChannelData): string {
   const measureStr = channelData.measure.toString().padStart(3, '0');
@@ -737,7 +738,7 @@ export function channelDataToString(channelData: ChannelData): string {
 }
 
 /**
- * 채널 데이터 배열을 BMS 문자열 배열로 변환
+ * Converts an array of channel data into an array of BMS strings
  */
 export function writeChannels(
   chart: EditableBMSChart,
@@ -746,41 +747,41 @@ export function writeChannels(
 ): string[] {
   const lines: string[] = [];
 
-  // 주석 추가
+  // Add comments
   if (options.includeComments) {
     lines.push('');
     lines.push('*---------------------- MAIN DATA FIELD');
     lines.push('');
   }
 
-  // 모든 채널 데이터 수집
+  // Collect all channel data
   const allChannelData: ChannelData[] = [];
 
-  // 박자표
+  // Time signatures
   allChannelData.push(...writeTimeSignatureChannels(chart.timeSignatures, options));
 
-  // BPM 변경
+  // BPM changes
   allChannelData.push(...writeBpmChannels(chart.bpmChanges, options));
 
-  // STOP 이벤트
+  // STOP events
   allChannelData.push(...writeStopChannels(chart.stopEvents, options));
 
-  // BGA 이벤트
+  // BGA events
   allChannelData.push(...writeBgaChannels(chart.bgaEvents, options));
 
-  // 노트
+  // Notes
   allChannelData.push(...writeNoteChannels(chart.notes, mapping, options, chart.timeSignatures));
 
-  // 정렬: 마디 번호 -> 채널 번호
+  // Sort: measure number -> channel number
   allChannelData.sort((a, b) => {
     if (a.measure !== b.measure) return a.measure - b.measure;
     return a.channel.localeCompare(b.channel);
   });
 
-  // 빈 마디 처리 (옵션에 따라)
+  // Handle empty measures (depending on options)
   let lastMeasure = -1;
   for (const data of allChannelData) {
-    // 마디가 바뀌면 빈 줄 추가
+    // Add a blank line when the measure changes
     if (data.measure !== lastMeasure && lastMeasure !== -1 && options.includeComments) {
       lines.push('');
     }

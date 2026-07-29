@@ -1,49 +1,49 @@
 /**
- * BMS 스타일 Strategy 패턴
+ * BMS style Strategy pattern
  *
- * 채널 매핑과 스타일 감지를 Strategy 객체로 캡슐화합니다.
- * - forward mapping (채널 → 컬럼): 파서/Notes 에서 사용
- * - reverse mapping (컬럼 → 채널): Writer 에서 사용
- * - score 함수: detectStyle 에서 스타일 자동 감지에 사용
+ * Encapsulates channel mapping and style detection in Strategy objects.
+ * - forward mapping (channel → column): used by the parser/Notes
+ * - reverse mapping (column → channel): used by the Writer
+ * - score function: used by detectStyle for automatic style detection
  */
 
 import type { ReverseChannelMapping } from '../../writer/types';
 
-/** BMS 스타일 타입 (기존 BMSStyle 과 동일, 호환 유지) */
+/** BMS style type (same as the previous BMSStyle, kept for compatibility) */
 export type BMSStyleId = 'iidx' | 'keyboard' | 'pms';
 
-/** 채널 통계 — 스타일 감지 점수 계산용 */
+/** Channel statistics — used to compute style-detection scores */
 export interface ChannelStats {
   counts: Readonly<Record<string, number>>;
   has2P: boolean;
 }
 
 /**
- * 채널 스타일 Strategy 인터페이스
+ * Channel style Strategy interface
  *
- * 각 구현체(IIDX_STRATEGY, KEYBOARD_STRATEGY, PMS_STRATEGY)는
- * 이 인터페이스를 만족하며, detectStyle 에서 점수 기반으로 선택됩니다.
+ * Each implementation (IIDX_STRATEGY, KEYBOARD_STRATEGY, PMS_STRATEGY)
+ * satisfies this interface and is selected by score in detectStyle.
  */
 export interface ChannelStyleStrategy {
   readonly id: BMSStyleId;
   /**
-   * 이 전략이 주어진 채널 통계와 얼마나 부합하는지 점수(높을수록 우선)를 반환합니다.
+   * Returns a score for how well this strategy matches the given channel stats (higher wins).
    */
   readonly score: (stats: ChannelStats, playerHeader?: string) => number;
   /**
-   * forward mapping: BMS 채널 문자열 → 컬럼 문자열
-   * (파서/Notes 에서 사용)
+   * forward mapping: BMS channel string → column string
+   * (used by the parser/Notes)
    */
   readonly buildMapping: (mode: 'sp' | 'dp') => Readonly<Record<string, string>>;
   /**
-   * reverse mapping: 컬럼 문자열 → BMS 채널 문자열
-   * (Writer 에서 사용)
+   * reverse mapping: column string → BMS channel string
+   * (used by the Writer)
    */
   readonly buildReverseMapping: (mode: 'sp' | 'dp') => ReverseChannelMapping;
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// 내부 헬퍼: 배열 쌍에서 Map<string,string> 생성
+// Internal helper: builds a Map<string,string> from an array of pairs
 // ──────────────────────────────────────────────────────────────────────────────
 
 function pairsToMap(pairs: [string, string][]): Map<string, string> {
@@ -132,9 +132,9 @@ export const IIDX_STRATEGY: ChannelStyleStrategy = {
     const ch18 = (counts['18'] || 0) + (counts['38'] || 0) + (counts['58'] || 0);
     const ch19 = (counts['19'] || 0) + (counts['39'] || 0) + (counts['59'] || 0);
     const ch17 = (counts['17'] || 0) + (counts['37'] || 0) + (counts['57'] || 0);
-    // 채널 18/19가 있고 17이 없으면 IIDX 고점수
+    // High IIDX score when channels 18/19 exist and 17 does not
     if ((ch18 > 0 || ch19 > 0) && ch17 === 0) return 100;
-    // 채널 18/19도 없고 17도 없으면 IIDX 기본
+    // Default to IIDX when neither channels 18/19 nor 17 exist
     if (ch18 === 0 && ch19 === 0 && ch17 === 0) return 50;
     return 10;
   },
@@ -232,7 +232,7 @@ export const KEYBOARD_STRATEGY: ChannelStyleStrategy = {
 // ──────────────────────────────────────────────────────────────────────────────
 
 function buildPmsForward(_mode: 'sp' | 'dp'): Readonly<Record<string, string>> {
-  // PMS는 항상 9K SP
+  // PMS is always 9K SP
   return Object.fromEntries([
     ['11','1'],['12','2'],['13','3'],['14','4'],['15','5'],['22','6'],['23','7'],['24','8'],['25','9'],
     ['31','1'],['32','2'],['33','3'],['34','4'],['35','5'],['42','6'],['43','7'],['44','8'],['45','9'],
@@ -281,10 +281,10 @@ export const PMS_STRATEGY: ChannelStyleStrategy = {
 };
 
 // ──────────────────────────────────────────────────────────────────────────────
-// 전략 레지스트리 + detectStyle
+// Strategy registry + detectStyle
 // ──────────────────────────────────────────────────────────────────────────────
 
-/** 등록된 모든 Strategy (점수 경쟁에 참여) */
+/** All registered Strategies (compete by score) */
 export const STRATEGIES: readonly ChannelStyleStrategy[] = [
   PMS_STRATEGY,
   KEYBOARD_STRATEGY,
@@ -292,7 +292,7 @@ export const STRATEGIES: readonly ChannelStyleStrategy[] = [
 ];
 
 /**
- * BMSObject 배열에서 채널 통계를 집계합니다.
+ * Aggregates channel statistics from an array of BMSObjects.
  */
 export function computeChannelStats(
   objects: ReadonlyArray<{ channel: string }>
@@ -316,9 +316,10 @@ export function computeChannelStats(
 }
 
 /**
- * BMSObject 배열에서 가장 적합한 Strategy와 DP 여부를 자동 감지합니다.
+ * Automatically detects the best-fitting Strategy and whether the chart is DP
+ * from an array of BMSObjects.
  *
- * 기존 detectBMSStyle 과 동일한 로직이지만 Strategy 객체를 반환합니다.
+ * Same logic as the previous detectBMSStyle, but returns a Strategy object.
  */
 export function detectStyle(
   objects: ReadonlyArray<{ channel: string }>,

@@ -1,35 +1,37 @@
 import { assertSpeedSegment, SpeedSegment } from './segment';
 
 /**
- * Speedcore는 내부적으로 사용되는 작은 라이브러리입니다.
- * Speedcore는 단일 차원으로 키프레임된 선형 모션을 나타내며,
- * BPM 변화({Timing}), 노트 간격 계수({Spacing}), 또는 스크롤링 세그먼트({Positioning})를
- * 처리할 때 유용합니다. Speedcore는 Segment 배열로 생성됩니다.
+ * Speedcore is a small library used internally.
+ * Speedcore represents keyframed linear motion in a single dimension,
+ * and is useful when working with BPM changes ({Timing}), note spacing
+ * factors ({Spacing}), or scrolling segments ({Positioning}).
+ * A Speedcore is created from an array of Segments.
  *
- * {Segment}는 `{ t, x, dx }`로 정의됩니다. 여기서:
+ * A {Segment} is defined as `{ t, x, dx }`, where:
  *
  * * speedcore.x(segment.t) = segment.x
  * * speedcore.t(segment.x) = segment.t
  * * speedcore.x(segment.t + dt) = segment.x + (segment.dx / dt)
  *
- * ## 설명
+ * ## Explanation
  *
- * 이러한 세그먼트를 템포 변경이라고 생각할 수 있습니다. 이때:
+ * You can think of these segments as tempo changes, where:
  *
- * * `t`는 곡 시작 이후 경과 시간(초)입니다.
- * * `x`는 곡 시작 이후 경과 박자입니다.
- * * `dx`는 `t`당 증가하는 `x`의 양으로, 이 경우 단위는 비트(박자) 초당입니다.
+ * * `t` is the elapsed time (in seconds) since the song started.
+ * * `x` is the elapsed beats since the song started.
+ * * `dx` is the amount `x` increases per `t`, in this case beats per second.
  *
- * 예를 들어, 140 BPM에서 시작하여 32 박자 후에 템포가 160 BPM으로 변경되고,
- * 128 박자 후(160번째 박자)에 템포가 다시 140 BPM으로 돌아가는 곡을 가정해 봅시다.
+ * For example, consider a song that starts at 140 BPM, changes tempo to
+ * 160 BPM after 32 beats, and returns to 140 BPM 128 beats later
+ * (at the 160th beat).
  *
- * 세 가지 세그먼트를 도출할 수 있습니다:
+ * We can derive three segments:
  *
- * 1. 0초일 때, 0 박자이고 초당 2.333 박자로 진행됩니다.
- * 2. 13.714초일 때, 32 박자이고 초당 2.667 박자로 진행됩니다.
- * 3. 61.714초일 때, 160 박자이고 초당 2.333 박자로 진행됩니다.
+ * 1. At 0 seconds, we are at beat 0, moving at 2.333 beats per second.
+ * 2. At 13.714 seconds, we are at beat 32, moving at 2.667 beats per second.
+ * 3. At 61.714 seconds, we are at beat 160, moving at 2.333 beats per second.
  *
- * 이 구조는 다음과 같이 표현됩니다:
+ * This structure is represented as follows:
  *
  * ```js
  * [ [0]: { t:  0.000,  x:   0,  dx: 2.333,  inclusive: true },
@@ -37,20 +39,20 @@ import { assertSpeedSegment, SpeedSegment } from './segment';
  *   [2]: { t: 61.714,  x: 160,  dx: 2.333,  inclusive: true } ]
  * ```
  *
- * 이 데이터를 통해 특정 `t`에서 `x` 값을 확인할 수 있습니다.
+ * With this data we can find the value of `x` at any given `t`.
  *
- * 예를 들어, "30초에서의 박자 수는 얼마인가?"라는 질문에 답하려면
- * `t < 30`인 `t`의 최대 값을 가진 세그먼트를 찾습니다.
- * 이 경우, 세그먼트 `[1]`입니다.
+ * For example, to answer "how many beats are at 30 seconds?",
+ * find the segment with the largest `t` such that `t < 30`.
+ * In this case, that is segment `[1]`.
  *
- * `segment.x + (t - segment.t) * segment.dx`를 계산합니다.
- * 결과 박자 수는 (32 + (30 - 13.714) * 2.667) = 75.435입니다.
+ * Compute `segment.x + (t - segment.t) * segment.dx`.
+ * The resulting number of beats is (32 + (30 - 13.714) * 2.667) = 75.435.
  *
- * 또한 이와 비슷한 방식으로 역방향 계산을 수행할 수도 있습니다.
+ * The inverse calculation can be performed in a similar way.
  *
- * 흥미롭게도, 이러한 세그먼트를 사용하여 BPM 변화와 STOP 세그먼트의 효과를
- * 동일한 배열에서 나타낼 수 있습니다. 예를 들어, 150 BPM 곡에서
- * 32번째 박자에 2 박자 정지가 있을 경우 다음과 같이 표현할 수 있습니다:
+ * Interestingly, these segments can also represent the effect of BPM changes
+ * and STOP segments in the same array. For example, in a 150 BPM song with
+ * a 2-beat stop at the 32nd beat, it can be represented as:
  *
  * ```js
  * [ [0]: { t:  0.0,  x:  0,  dx: 2.5,  inclusive: true  },
@@ -61,7 +63,7 @@ import { assertSpeedSegment, SpeedSegment } from './segment';
 export class Speedcore<S extends SpeedSegment = SpeedSegment> {
     _segments: S[];
     /**
-     * 주어진 세그먼트로 새로운 `Speedcore`를 생성합니다.
+     * Creates a new `Speedcore` with the given segments.
      */
     constructor(segments: S[]) {
         segments.forEach(assertSpeedSegment);
@@ -76,11 +78,11 @@ export class Speedcore<S extends SpeedSegment = SpeedSegment> {
     }
 
     _segmentAt(targetFn: (segment: S) => number, position: number): S {
-        // 이진 탐색으로 O(log n) 탐색 (M3)
-        // 불변식: _segments 는 targetFn 기준 오름차순으로 삽입됨
+        // Binary search for O(log n) lookup (M3)
+        // Invariant: _segments are inserted in ascending order of targetFn
         let lo = 0;
         let hi = this._segments.length - 1;
-        // 마지막으로 _reached 조건을 만족하는 인덱스를 찾는다
+        // Find the last index that satisfies the _reached condition
         let result = 0;
         while (lo <= hi) {
             const mid = (lo + hi) >>> 1;
@@ -103,7 +105,7 @@ export class Speedcore<S extends SpeedSegment = SpeedSegment> {
     }
 
     /**
-     * 주어진 _x_에서 _t_를 계산합니다.
+     * Calculates _t_ given _x_.
      */
     t(x: number) {
         const segment = this.segmentAtX(x);
@@ -111,7 +113,7 @@ export class Speedcore<S extends SpeedSegment = SpeedSegment> {
     }
 
     /**
-     * 주어진 _t_에서 _x_를 계산합니다.
+     * Calculates _x_ given _t_.
      * @param {number} t
      */
     x(t: number) {
@@ -120,7 +122,7 @@ export class Speedcore<S extends SpeedSegment = SpeedSegment> {
     }
 
     /**
-     * 주어진 _t_에서 _dx_를 찾습니다.
+     * Finds _dx_ at the given _t_.
      * @param {number} t
      */
     dx(t: number) {

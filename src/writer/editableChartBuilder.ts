@@ -1,10 +1,11 @@
 /**
- * EditableChartBuilder — BMSChart → EditableBMSChart 변환
+ * EditableChartBuilder — converts BMSChart → EditableBMSChart
  *
- * REFACTOR-PLAN PR-5 / P2: BMSWriter.fromBMSChart 의 내부 로직을 이 빌더로 추출.
- * BMSWriter.fromBMSChart 는 이 빌더에 위임하는 얇은 facade 로 유지됩니다.
+ * REFACTOR-PLAN PR-5 / P2: extracts the internal logic of BMSWriter.fromBMSChart
+ * into this builder. BMSWriter.fromBMSChart remains as a thin facade that
+ * delegates to this builder.
  *
- * Visitor 인터페이스를 사용하지 않는 채널 디스패치 방식으로 동일한 분리 효과를 얻습니다.
+ * A channel-dispatch approach without a Visitor interface achieves the same separation.
  */
 
 import type {
@@ -21,12 +22,12 @@ import type { BMSObject } from '../parser/bms/objects';
 import { detectStyle } from '../parser/strategies/styleStrategy';
 
 // ──────────────────────────────────────────────────────────────────────────────
-// 내부 헬퍼
+// Internal helpers
 // ──────────────────────────────────────────────────────────────────────────────
 
 /**
- * 채널 정규화 (5x→1x, 6x→2x, 3x→1x, 4x→2x, Dx→1x, Ex→2x)
- * — parser의 BMSNoteBuilder._normalizeChannel 과 동일
+ * Channel normalization (5x→1x, 6x→2x, 3x→1x, 4x→2x, Dx→1x, Ex→2x)
+ * — same as the parser's BMSNoteBuilder._normalizeChannel
  */
 function normalizeChannel(ch: string): string {
   const first = ch.charAt(0).toUpperCase();
@@ -38,8 +39,8 @@ function normalizeChannel(ch: string): string {
 }
 
 /**
- * BMSObject 하나를 EditableBMSNote 로 변환합니다.
- * null 반환 시 해당 오브젝트를 건너뜁니다.
+ * Converts a single BMSObject into an EditableBMSNote.
+ * Returning null skips the object.
  */
 function objectToNote(
   obj: BMSObject,
@@ -83,7 +84,7 @@ function objectToNote(
 }
 
 /**
- * BGM 노트에 순차 채널 그룹 번호를 할당합니다 (에디터 전용).
+ * Assigns sequential channel group numbers to BGM notes (editor only).
  */
 function assignBgmChannels(notes: EditableBMSNote[]): void {
   const tickGroups = new Map<number, EditableBMSNote[]>();
@@ -104,8 +105,8 @@ function assignBgmChannels(notes: EditableBMSNote[]): void {
 }
 
 /**
- * 같은 beat+column 의 invisible/bgm 노트를 playable 노트의
- * additionalKeysounds 로 병합합니다.
+ * Merges invisible/bgm notes at the same beat+column into the playable note's
+ * additionalKeysounds.
  */
 function groupMultiKeysounds(notes: EditableBMSNote[]): EditableBMSNote[] {
   const playableMap = new Map<string, EditableBMSNote>();
@@ -145,9 +146,9 @@ function groupMultiKeysounds(notes: EditableBMSNote[]): EditableBMSNote[] {
 // ──────────────────────────────────────────────────────────────────────────────
 
 /**
- * BMSChart 를 EditableBMSChart 로 변환하는 빌더.
+ * Builder that converts a BMSChart into an EditableBMSChart.
  *
- * 사용 예:
+ * Usage:
  * ```ts
  * const editable = new EditableChartBuilder(chart).build();
  * ```
@@ -162,7 +163,7 @@ export class EditableChartBuilder {
   build(): EditableBMSChart {
     const chart = this.chart;
 
-    // 헤더 변환
+    // Convert headers
     const headers: BMSHeaderData = parseHeadersToData(chart.headers);
 
     const notes: EditableBMSNote[] = [];
@@ -171,14 +172,14 @@ export class EditableChartBuilder {
     const bgaEvents: BMSBgaEvent[] = [];
     const timeSignatures = new Map<number, number>();
 
-    // BPM / STOP 정의 맵
+    // BPM / STOP definition maps
     const bpmMap = new Map<string, number>();
     headers.bpmDef.forEach((value, key) => bpmMap.set(key.toLowerCase(), value));
 
     const stopMap = new Map<string, number>();
     headers.stopDef.forEach((value, key) => stopMap.set(key.toLowerCase(), value));
 
-    // 채널 매핑 자동 감지 (Strategy 사용)
+    // Auto-detect channel mapping (using a Strategy)
     const objects = chart.objects.allSorted();
     const playerHeader = chart.headers.get('player');
     const { strategy, isDP } = detectStyle(objects, playerHeader);
@@ -186,7 +187,7 @@ export class EditableChartBuilder {
 
     let noteIdCounter = 0;
 
-    // 롱노트 페어링 상태
+    // Long note pairing state
     const activeLN: Record<string, EditableBMSNote> = {};
     const lastNote: Record<string, EditableBMSNote> = {};
     const lnObj = (chart.headers.get('lnobj') || '').toLowerCase();
@@ -195,14 +196,14 @@ export class EditableChartBuilder {
       const channel = obj.channel.toUpperCase();
       const firstChar = channel.charAt(0);
 
-      // 채널 02: 박자표
+      // Channel 02: time signature
       if (channel === '02') {
         const size = parseFloat(obj.value);
         if (!isNaN(size)) timeSignatures.set(obj.measure, size);
         continue;
       }
 
-      // 채널 03: 직접 BPM
+      // Channel 03: direct BPM
       if (channel === '03') {
         const bpm = parseInt(obj.value, 16);
         if (!isNaN(bpm) && bpm > 0) {
@@ -211,7 +212,7 @@ export class EditableChartBuilder {
         continue;
       }
 
-      // 채널 08: 확장 BPM
+      // Channel 08: extended BPM
       if (channel === '08') {
         const bpmKey = obj.value.toLowerCase();
         const bpm = bpmMap.get(bpmKey);
@@ -224,7 +225,7 @@ export class EditableChartBuilder {
         continue;
       }
 
-      // 채널 09: STOP
+      // Channel 09: STOP
       if (channel === '09') {
         const stopKey = obj.value.toLowerCase();
         const duration = stopMap.get(stopKey);
@@ -237,7 +238,7 @@ export class EditableChartBuilder {
         continue;
       }
 
-      // 채널 04, 06, 07: BGA
+      // Channels 04, 06, 07: BGA
       if (channel === '04' || channel === '06' || channel === '07') {
         bgaEvents.push({
           measure: obj.measure, fraction: obj.fraction,
@@ -247,7 +248,7 @@ export class EditableChartBuilder {
         continue;
       }
 
-      // 5x/6x: 롱노트 채널
+      // 5x/6x: long note channels
       if (firstChar === '5' || firstChar === '6') {
         const normalized = normalizeChannel(channel);
         const beat = chart.measureToBeat(obj.measure, obj.fraction);
@@ -265,7 +266,7 @@ export class EditableChartBuilder {
         continue;
       }
 
-      // 1x/2x, 3x/4x, Dx/Ex: 일반/인비저블/지뢰 노트
+      // 1x/2x, 3x/4x, Dx/Ex: normal/invisible/landmine notes
       if (['1','2','3','4','D','E'].includes(firstChar)) {
         const normalized = normalizeChannel(channel);
         if (lnObj && obj.value.toLowerCase() === lnObj && lastNote[normalized]) {
@@ -281,17 +282,17 @@ export class EditableChartBuilder {
         continue;
       }
 
-      // 채널 01: BGM
+      // Channel 01: BGM
       if (channel === '01') {
         const note = objectToNote(obj, noteIdCounter++, chart, channelMapping);
         if (note) notes.push(note);
       }
     }
 
-    // BGM 노트 채널 그룹 할당
+    // Assign BGM note channel groups
     assignBgmChannels(notes);
 
-    // 멀티 키음 그룹화
+    // Group multi-keysounds
     const groupedNotes = groupMultiKeysounds(notes);
 
     return { headers, notes: groupedNotes, timeSignatures, bpmChanges, stopEvents, bgaEvents };
@@ -299,7 +300,7 @@ export class EditableChartBuilder {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// 빈 차트 생성 유틸 (BMSWriter.createEmptyChart 에서 사용)
+// Empty chart creation util (used by BMSWriter.createEmptyChart)
 // ──────────────────────────────────────────────────────────────────────────────
 
 export function buildEmptyChart(): EditableBMSChart {

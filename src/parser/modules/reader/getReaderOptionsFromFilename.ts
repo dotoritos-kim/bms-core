@@ -1,6 +1,6 @@
 /**
- * 파일 이름을 기반으로 리더 옵션을 반환합니다.
- * @param {string} filename 파일 이름
+ * Returns reader options based on the file name.
+ * @param {string} filename the file name
  */
 export function getReaderOptionsFromFilename(filename: string) {
     let forceEncoding;

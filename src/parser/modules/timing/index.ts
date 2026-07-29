@@ -6,21 +6,22 @@ import { SpeedSegment } from '../speedcore/segment';
 const precedence = { bpm: 1, stop: 2 };
 
 /**
- * Timing은 악보의 타이밍 정보를 나타냅니다.
- * Timing 객체는 메트릭 시간(초)과 음악 시간(박자) 간 동기화를 위한 기능을 제공합니다.
+ * Timing represents the timing information of a chart.
+ * A Timing object provides facilities to synchronize between metric time
+ * (seconds) and musical time (beats).
  *
- * Timing은 여러 작업(action)으로 생성됩니다:
+ * A Timing is created from several actions:
  *
- * - BPM 변경
- * - 정지(STOP) 작업
+ * - BPM changes
+ * - STOP actions
  */
 export class Timing {
     _speedcore: Speedcore<TimingSegment>;
     _eventBeats: number[];
     /**
-     * 초기 BPM 및 지정된 작업으로 Timing을 생성합니다.
+     * Creates a Timing with an initial BPM and the specified actions.
      *
-     * 일반적으로 `Timing.fromBMSChart`를 사용하여 BMSChart에서 인스턴스를 생성합니다.
+     * Usually you would use `Timing.fromBMSChart` to create an instance from a BMSChart.
      */
     constructor(initialBPM: number, actions: TimingAction[]) {
         const state = { bpm: initialBPM, beat: 0, seconds: 0 };
@@ -53,7 +54,7 @@ export class Timing {
                 case 'stop': {
                     const stopBeats = action.stopBeats || 0;
                     if (stopBeats >= 0) {
-                        // 양수 STOP: 일시정지 (기존 동작)
+                        // Positive STOP: pause (existing behavior)
                         segments.push({
                             t: seconds,
                             x: beat,
@@ -70,21 +71,21 @@ export class Timing {
                             inclusive: false,
                         });
                     } else {
-                        // 음수 STOP: 비트가 역방향으로 진행 (역행 효과)
-                        // 시간은 정상 진행, 비트는 감소
+                        // Negative STOP: beats move backwards (rewind effect)
+                        // Time advances normally while beats decrease
                         const negativeDuration = Math.abs(stopBeats * 60 / state.bpm);
                         segments.push({
                             t: seconds,
                             x: beat,
-                            dx: -state.bpm / 60, // 역방향
+                            dx: -state.bpm / 60, // backwards
                             bpm: state.bpm,
                             inclusive: true,
                         });
                         seconds += negativeDuration;
-                        // 역행 후 원래 비트 + stopBeats (음수이므로 감소된 위치)로 복귀
+                        // After rewinding, return to the original beat + stopBeats (a decreased position, since it is negative)
                         segments.push({
                             t: seconds,
-                            x: beat + stopBeats, // 음수이므로 beat보다 작음
+                            x: beat + stopBeats, // less than beat, since stopBeats is negative
                             dx: state.bpm / 60,
                             bpm: state.bpm,
                             inclusive: false,
@@ -103,7 +104,7 @@ export class Timing {
     }
 
     /**
-     * 주어진 박자를 초 단위로 변환합니다.
+     * Converts the given beat to seconds.
      * @param {number} beat
      */
     beatToSeconds(beat: number) {
@@ -111,7 +112,7 @@ export class Timing {
     }
 
     /**
-     * 주어진 초를 박자로 변환합니다.
+     * Converts the given seconds to beats.
      * @param {number} seconds
      */
     secondsToBeat(seconds: number) {
@@ -119,7 +120,7 @@ export class Timing {
     }
 
     /**
-     * 지정된 박자의 BPM을 반환합니다.
+     * Returns the BPM at the specified beat.
      * @param {number} beat
      */
     bpmAtBeat(beat: number) {
@@ -127,15 +128,15 @@ export class Timing {
     }
 
     /**
-     * 이벤트가 있는 박자를 나타내는 배열을 반환합니다.
+     * Returns an array of the beats that have events.
      */
     getEventBeats() {
         return this._eventBeats;
     }
 
     /**
-     * 모든 BPM 변경 지점과 해당 BPM 값을 반환합니다.
-     * BASEBPM 정규화에 사용됩니다.
+     * Returns all BPM change points and their BPM values.
+     * Used for BASEBPM normalization.
      */
     getBpmSegments(): { beat: number; bpm: number }[] {
         const segments = this._speedcore._segments;
@@ -151,14 +152,14 @@ export class Timing {
     }
 
     /**
-     * 초기 BPM (곡 시작 시점의 BPM)을 반환합니다.
+     * Returns the initial BPM (the BPM at the start of the song).
      */
     getInitialBpm(): number {
         return this._speedcore._segments[0]?.bpm ?? 120;
     }
 
     /**
-     * BMSChart에서 Timing 인스턴스를 생성합니다.
+     * Creates a Timing instance from a BMSChart.
      * @param {BMSChart} chart
      */
     static fromBMSChart(chart: BMSChart) {
@@ -184,17 +185,17 @@ export class Timing {
 
 export type TimingAction = BPMTimingAction | StopTimingAction;
 export interface BaseTimingAction {
-    /** 이 작업이 발생하는 위치 */
+    /** The position where this action occurs */
     beat: number;
 }
 export interface BPMTimingAction extends BaseTimingAction {
     type: 'bpm';
-    /** 변경할 BPM 값 */
+    /** The BPM value to change to */
     bpm: number;
 }
 export interface StopTimingAction extends BaseTimingAction {
     type: 'stop';
-    /** 멈출 박자 수 */
+    /** The number of beats to stop */
     stopBeats: number;
 }
 

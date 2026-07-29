@@ -1,16 +1,16 @@
-// Keysounds를 노출하는 모듈
+// Module that exposes Keysounds
 /* module */
 
 import { uniq, values } from '../../utils/lodash';
 import { BMSChart } from '../../bms/chart';
 
 /**
- * 키사운드 ID와 파일 이름 간의 간단한 매핑.
+ * A simple mapping between keysound IDs and file names.
  *
- * 이를 Compiler를 사용해 BMSChart로 파싱한 후,
- * `fromBMSChart()`를 사용하여 Keysounds를 생성할 수 있습니다:
+ * After parsing into a BMSChart with the Compiler, a Keysounds
+ * object can be created with `fromBMSChart()`:
  *
- * 그런 다음 `.get()`을 사용해 파일 이름을 가져올 수 있습니다:
+ * Then `.get()` can be used to retrieve the file name:
  *
  */
 export class KeySounds {
@@ -22,50 +22,51 @@ export class KeySounds {
     }
 
     /**
-     * 지정된 ID의 키사운드 파일을 반환합니다.
-     * @param id 두 문자로 된 키사운드 ID
-     * @returns 사운드 파일 이름
+     * Returns the keysound file for the given ID.
+     * @param id two-character keysound ID
+     * @returns the sound file name
      */
     get(id: string): string | undefined {
         return this._map[id.toLowerCase()];
     }
 
     /**
-     * 지정된 ID의 키사운드 볼륨을 반환합니다 (0-100, 기본값 100).
-     * BMS #VOLWAVxx 헤더에서 파싱됩니다.
-     * @param id 두 문자로 된 키사운드 ID
-     * @returns 볼륨 (0-100)
+     * Returns the keysound volume for the given ID (0-100, default 100).
+     * Parsed from BMS #VOLWAVxx headers.
+     * @param id two-character keysound ID
+     * @returns the volume (0-100)
      */
     getVolume(id: string): number {
         return this._volumeMap[id.toLowerCase()] ?? 100;
     }
 
     /**
-     * 이 Keysounds 객체에 있는 고유한 파일 이름 배열을 반환합니다.
-     * @returns 파일 이름 배열
+     * Returns the unique file names in this Keysounds object.
+     * @returns an array of file names
      */
     files(): string[] {
         return uniq(values(this._map));
     }
 
     /**
-     * 키사운드 ID에서 키사운드 파일 이름으로의 매핑을 반환합니다.
+     * Returns the mapping from keysound IDs to keysound file names.
      *
-     * **주의:** 해당 메서드는 이 Keysounds 객체에 사용되는 내부 데이터 구조를 반환합니다. 변형하지 마십시오!
+     * **Caution:** this method returns the internal data structure used by
+     * this Keysounds object. Do not mutate it!
      */
     all() {
         return this._map;
     }
 
     /**
-     * 키사운드 ID에서 볼륨으로의 매핑을 반환합니다.
+     * Returns the mapping from keysound IDs to volumes.
      */
     allVolumes() {
         return this._volumeMap;
     }
 
     /**
-     * BMSChart에서 새로운 Keysounds 객체를 생성합니다.
+     * Creates a new Keysounds object from a BMSChart.
      * @param chart
      */
     static fromBMSChart(chart: BMSChart) {
@@ -78,7 +79,7 @@ export class KeySounds {
                 map[wavMatch[1].toLowerCase()] = value;
                 return;
             }
-            // #VOLWAVxx yy — 키음별 볼륨 (0-100)
+            // #VOLWAVxx yy — per-keysound volume (0-100)
             const volMatch = name.match(/^volwav(\S\S)$/i);
             if (volMatch) {
                 const vol = parseInt(value, 10);

@@ -1,4 +1,4 @@
-// BMS 노트차트를 나타내는 문자열을 받아 파싱하고 BMSChart로 컴파일하는 모듈입니다.
+// Module that takes a string representing a BMS notechart, parses it, and compiles it into a BMSChart.
 /* module */
 import { match } from '../../utils/match';
 import { BMSChart } from '../../bms/chart';
@@ -10,7 +10,7 @@ export type { CompileResult, CompileWarning, CompileStats, WavStats, WarningCode
 
 const matchers = {
     bms: {
-        // #RANDOM 제어 흐름
+        // #RANDOM control flow
         random: /^#RANDOM\s+(\d+)$/i,
         setrandom: /^#SETRANDOM\s+(\d+)$/i,
         endrandom: /^#ENDRANDOM$/i,
@@ -18,22 +18,22 @@ const matchers = {
         elseif: /^#ELSEIF\s+(\d+)$/i,
         else: /^#ELSE$/i,
         endif: /^#ENDIF$/i,
-        // #SWITCH 제어 흐름
+        // #SWITCH control flow
         switch: /^#SWITCH\s+(\d+)$/i,
         setswitch: /^#SETSWITCH\s+(\d+)$/i,
         case: /^#CASE\s+(\d+)$/i,
         skip: /^#SKIP$/i,
         def: /^#DEF$/i,
         endsw: /^#ENDSW$/i,
-        // 채널 및 헤더
+        // Channels and headers
         timeSignature: /^#(\d\d\d)02:(\S*)$/,
         channel: /^#(?:EXT\s+#)?(\d\d\d)(\S\S):(\S*)$/,
-        // 헤더: 공백 또는 콜론으로 구분되는 두 가지 형식 모두 지원
-        // #WAV01 sound.wav 또는 #WAV01:sound.wav
+        // Header: supports both whitespace- and colon-separated forms
+        // #WAV01 sound.wav or #WAV01:sound.wav
         header: /^#(\w+)(?:[:\s]\s*(\S.*))?$/,
     },
     dtx: {
-        // #RANDOM 제어 흐름
+        // #RANDOM control flow
         random: /^#RANDOM\s+(\d+)$/i,
         setrandom: /^#SETRANDOM\s+(\d+)$/i,
         endrandom: /^#ENDRANDOM$/i,
@@ -41,14 +41,14 @@ const matchers = {
         elseif: /^#ELSEIF\s+(\d+)$/i,
         else: /^#ELSE$/i,
         endif: /^#ENDIF$/i,
-        // #SWITCH 제어 흐름
+        // #SWITCH control flow
         switch: /^#SWITCH\s+(\d+)$/i,
         setswitch: /^#SETSWITCH\s+(\d+)$/i,
         case: /^#CASE\s+(\d+)$/i,
         skip: /^#SKIP$/i,
         def: /^#DEF$/i,
         endsw: /^#ENDSW$/i,
-        // 채널 및 헤더
+        // Channels and headers
         timeSignature: /^#(\d\d\d)02:\s*(\S*)$/,
         channel: /^#(?:EXT\s+#)?(\d\d\d)(\S\S):\s*(\S*)$/,
         header: /^#(\w+):(?:\s+(\S.*))?$/,
@@ -56,9 +56,9 @@ const matchers = {
 };
 
 /**
- * BMS 노트차트를 나타내는 문자열을 읽고, 파싱하여 {BMSChart}로 컴파일합니다.
- * @param text BMS 노트차트
- * @param options 추가 파서 옵션
+ * Reads a string representing a BMS notechart, parses it, and compiles it into a {BMSChart}.
+ * @param text BMS notechart
+ * @param options additional parser options
  */
 export function compile(text: string, options?: Partial<BMSCompileOptions>): CompileResult {
     options = options || {};
@@ -73,14 +73,14 @@ export function compile(text: string, options?: Partial<BMSCompileOptions>): Com
 
     const matcher = (options.format && matchers[options.format]) || matchers.bms;
 
-    // 제어 흐름 상태 머신 (P4: 4개 스택을 캡슐화)
+    // Control-flow state machine (P4: encapsulates the four stacks)
     const cf = new ControlFlowState();
-    // #SETRANDOM 고정값 (테스트용)
+    // Fixed #SETRANDOM value (for tests)
     const setRandomValue = options.setrandom;
-    // #SETSWITCH 고정값 (테스트용)
+    // Fixed #SETSWITCH value (for tests)
     const setSwitchValue = options.setswitch;
 
-    // WAV/BMP 수집 통계 (디버그용)
+    // WAV/BMP collection stats (for debugging)
     let wavHeadersCollected = 0;
     let wavHeadersInSkippedBlocks = 0;
     const sampleWavHeaders: string[] = [];
@@ -93,17 +93,17 @@ export function compile(text: string, options?: Partial<BMSCompileOptions>): Com
         malformedSentences: 0,
 
         /**
-         * 생성된 차트
+         * The generated chart
          */
         chart: chart,
 
         /**
-         * 컴파일 중 발견된 경고
+         * Warnings found during compilation
          */
         warnings: [],
 
         /**
-         * WAV 헤더 수집 통계 (디버그)
+         * WAV header collection stats (debug)
          */
         wavStats: {
             total: 0,
@@ -111,7 +111,7 @@ export function compile(text: string, options?: Partial<BMSCompileOptions>): Com
         },
     };
 
-    // 디버그: BMS 파일 크기 로깅
+    // Debug: log the BMS file size
     const lineCount = text.split(/\r\n|\r|\n/).length;
 
     eachLine(text, function (text, lineNumber) {
@@ -120,12 +120,12 @@ export function compile(text: string, options?: Partial<BMSCompileOptions>): Com
         match(text)
             .when(matcher.random, function (m) {
                 result.controlSentences += 1;
-                // #SETRANDOM이 설정되어 있으면 고정값 사용
+                // Use the fixed value when #SETRANDOM is set
                 const value = setRandomValue !== undefined ? setRandomValue : rng(+m[1]);
                 cf.beginRandom(value);
             })
             .when(matcher.setrandom, function () {
-                // #SETRANDOM은 다음 #RANDOM의 값을 고정 (이미 options에서 처리)
+                // #SETRANDOM pins the value of the next #RANDOM (already handled via options)
                 result.controlSentences += 1;
             })
             .when(matcher.endrandom, function () {
@@ -148,14 +148,14 @@ export function compile(text: string, options?: Partial<BMSCompileOptions>): Com
                 result.controlSentences += 1;
                 cf.endIf();
             })
-            // #SWITCH 제어 흐름
+            // #SWITCH control flow
             .when(matcher.switch, function (m) {
                 result.controlSentences += 1;
                 const value = setSwitchValue !== undefined ? setSwitchValue : rng(+m[1]);
                 cf.beginSwitch(value);
             })
             .when(matcher.setswitch, function () {
-                // #SETSWITCH는 options에서 처리됨
+                // #SETSWITCH is handled via options
                 result.controlSentences += 1;
             })
             .when(matcher.case, function (m) {
@@ -190,9 +190,9 @@ export function compile(text: string, options?: Partial<BMSCompileOptions>): Com
             })
             .when(matcher.header, function (m) {
                 result.headerSentences += 1;
-                // WAV/BMP 정의는 #RANDOM 분기에 관계없이 항상 수집
-                // WAV/BMP는 파일 매핑일 뿐이고, 사용 여부는 채널 데이터에서 결정됨
-                // 이렇게 하면 #RANDOM으로 선택되지 않은 분기의 WAV도 로드 가능
+                // Always collect WAV/BMP definitions regardless of #RANDOM branches.
+                // WAV/BMP are just file mappings; whether they are used is decided by the channel data.
+                // This also lets WAVs from branches not selected by #RANDOM be loaded.
                 const headerName = m[1].toLowerCase();
                 if (headerName.startsWith('wav') || headerName.startsWith('bmp')) {
                     chart.headers.set(m[1], m[2]);
@@ -200,7 +200,7 @@ export function compile(text: string, options?: Partial<BMSCompileOptions>): Com
                     if (skipped) {
                         wavHeadersInSkippedBlocks++;
                     }
-                    // 샘플 수집 (처음 20개만)
+                    // Collect samples (first 20 only)
                     if (sampleWavHeaders.length < 20) {
                         sampleWavHeaders.push(m[1]);
                     }
@@ -213,11 +213,11 @@ export function compile(text: string, options?: Partial<BMSCompileOptions>): Com
             });
     });
 
-    // 디버그 통계 업데이트
+    // Update debug stats
     result.wavStats.total = wavHeadersCollected;
     result.wavStats.inSkippedBlocks = wavHeadersInSkippedBlocks;
 
-    // 디버그 로그 출력 (logger 옵션이 명시적으로 주어진 경우에만 출력)
+    // Emit debug logs (only when the logger option is explicitly provided)
     if (options.logger) {
         const log = options.logger.info ?? (() => undefined);
         log(`[BMS Compiler] Parsed ${lineCount} lines: ${result.headerSentences} headers, ${result.channelSentences} channels, ${result.controlSentences} control`);
@@ -266,28 +266,28 @@ function eachLine(text: string, callback: (line: string, index: number) => void)
 }
 
 export interface BMSCompileOptions {
-    /** 파일 형식 */
+    /** File format */
     format: 'bms' | 'dtx';
 
-    /** 난수 생성 함수.
-     *  `#RANDOM n` 명령을 처리할 때 사용됩니다.
-     *  이 함수는 1에서 `n` 사이의 정수를 반환해야 합니다.
+    /** Random number generator function.
+     *  Used when processing the `#RANDOM n` command.
+     *  This function must return an integer between 1 and `n`.
      */
     rng: (max: number) => number;
 
-    /** #SETRANDOM 고정값 (테스트용).
-     *  설정하면 모든 #RANDOM 블록이 이 값을 사용합니다.
+    /** Fixed #SETRANDOM value (for tests).
+     *  When set, every #RANDOM block uses this value.
      */
     setrandom?: number;
 
-    /** #SETSWITCH 고정값 (테스트용).
-     *  설정하면 모든 #SWITCH 블록이 이 값을 사용합니다.
+    /** Fixed #SETSWITCH value (for tests).
+     *  When set, every #SWITCH block uses this value.
      */
     setswitch?: number;
 
-    /** 디버그 로거 (선택).
-     *  주어진 경우 컴파일 통계가 `logger.info`로 출력됩니다.
-     *  주어지지 않으면 라이브러리는 어떠한 콘솔 출력도 하지 않습니다.
+    /** Debug logger (optional).
+     *  When provided, compile stats are emitted via `logger.info`.
+     *  When omitted, the library produces no console output at all.
      */
     logger?: {
         info?: (message: string) => void;

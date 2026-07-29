@@ -9,13 +9,13 @@ export type { BMSNote, NoteType };
 export { calculateLandmineDamage, detectBMSStyle };
 
 /**
- * Notes는 게임 내 Note 객체들을 보유합니다.
- * Note 객체는 플레이 가능할 수도, 불가능할 수도 있습니다.
+ * Notes holds the in-game Note objects.
+ * A Note object may or may not be playable.
  *
- * 이를 Compiler를 사용해 BMSChart로 파싱한 후,
- * `fromBMSChart()`를 사용하여 Notes를 생성할 수 있습니다:
+ * After parsing into a BMSChart with the Compiler, a Notes
+ * object can be created with `fromBMSChart()`:
  *
- * 그런 다음 `.all()` 메서드를 사용하여 모든 노트를 얻을 수 있습니다.
+ * Then the `.all()` method can be used to get every note.
  *
  */
 export class Notes {
@@ -23,7 +23,7 @@ export class Notes {
     static CHANNEL_MAPPING = ChannelMapping;
 
     /**
-     * @param {BMSNote[]} notes Note 객체들의 배열
+     * @param {BMSNote[]} notes an array of Note objects
      */
     constructor(notes: BMSNote[]) {
         notes.forEach(assertBMSNote);
@@ -31,24 +31,24 @@ export class Notes {
     }
 
     /**
-     * 이 객체 내의 노트 수를 반환합니다.
-     * 플레이 가능 및 불가능한 노트 모두를 포함합니다.
+     * Returns the number of notes in this object,
+     * counting both playable and non-playable notes.
      */
     count() {
         return this._notes.length;
     }
 
     /**
-     * 모든 노트의 배열을 반환합니다.
+     * Returns an array of all notes.
      */
     all() {
         return this._notes.slice();
     }
 
     /**
-     * BMSChart에서 Notes 객체를 생성합니다.
-     * @param chart 처리할 차트
-     * @param options 옵션
+     * Creates a Notes object from a BMSChart.
+     * @param chart the chart to process
+     * @param options options
      */
     static fromBMSChart(chart: BMSChart, options?: BMSChartOptions) {
         void BMSChart;
@@ -59,7 +59,7 @@ export class Notes {
         if (!mapping) {
             // Auto-detect BMS style (IIDX, Keyboard, PMS) based on channel usage
             const objects = chart.objects.allSorted();
-            // #PLAYER 헤더를 전달하여 DP 감지 정확도 향상
+            // Pass the #PLAYER header to improve DP detection accuracy
             const playerHeader = chart.headers.get('player');
             const { style, isDP } = detectBMSStyle(objects, playerHeader);
             mapping = createCombinedMapping(style, isDP);
@@ -96,7 +96,7 @@ class BMSNoteBuilder {
         this._objects.forEach((object) => {
             this._handle(object);
         });
-        // BUG-P1: 미매칭 롱노트를 일반 노트로 복구 (시작만 있고 끝이 없는 LN)
+        // BUG-P1: recover unmatched long notes as normal notes (LNs with a start but no end)
         for (const channel of Object.keys(this._activeLN)) {
             const orphan = this._activeLN[channel];
             delete orphan.endBeat;
@@ -145,7 +145,7 @@ class BMSNoteBuilder {
     _handleNormalNote(object: BMSObject, noteType: 'playable' | 'invisible' | 'landmine') {
         const channel = this._normalizeChannel(object.channel);
         const beat = this._getBeat(object);
-        // BUG-P2: LNOBJ는 playable 노트에만 적용 (invisible/landmine 제외)
+        // BUG-P2: LNOBJ applies only to playable notes (excludes invisible/landmine)
         if (this._lnObj && noteType === 'playable' && object.value.toLowerCase() === this._lnObj) {
             if (this._lastNote[channel]) {
                 this._lastNote[channel].endBeat = beat;
@@ -160,7 +160,7 @@ class BMSNoteBuilder {
                 channel: object.channel,
             };
 
-            // 지뢰 노트의 경우 데미지 계산
+            // Calculate damage for landmine notes
             if (noteType === 'landmine') {
                 note.damage = calculateLandmineDamage(object.value);
             }
@@ -198,9 +198,9 @@ class BMSNoteBuilder {
     }
 
     _normalizeChannel(channel: string) {
-        // 롱노트 채널 정규화 (5x -> 1x, 6x -> 2x)
-        // 고스트/인비저블 채널 정규화 (3x -> 1x, 4x -> 2x)
-        // 지뢰 채널 정규화 (Dx -> 1x, Ex -> 2x)
+        // Normalize long-note channels (5x -> 1x, 6x -> 2x)
+        // Normalize ghost/invisible channels (3x -> 1x, 4x -> 2x)
+        // Normalize landmine channels (Dx -> 1x, Ex -> 2x)
         const firstChar = channel.charAt(0).toUpperCase();
 
         switch (firstChar) {
@@ -220,8 +220,8 @@ class BMSNoteBuilder {
 
 interface BMSChartOptions {
     /**
-     * BMS 채널에서 게임 채널로의 매핑.
-     * 제공하지 않으면 BMS 스타일(IIDX, Keyboard, PMS)을 자동 감지합니다.
+     * Mapping from BMS channels to game channels.
+     * When omitted, the BMS style (IIDX, Keyboard, PMS) is auto-detected.
      */
     mapping?: BMSChannelNoteMapping;
 }

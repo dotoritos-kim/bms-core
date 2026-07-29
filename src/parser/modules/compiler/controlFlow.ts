@@ -1,35 +1,35 @@
 // #RANDOM/#IF/#ELSEIF/#ELSE/#ENDIF + #SWITCH/#CASE/#SKIP/#DEF/#ENDSW
-// 제어 흐름 상태 머신 (REFACTOR-PLAN §5 P4).
+// control-flow state machine (REFACTOR-PLAN §5 P4).
 //
-// 기존 `compile()` 본문 안에서 직접 조작하던 4개 스택
-// (randomStack / skipStack / matchedStack / switchStack)을
-// 단일 클래스로 격리하여 가독성과 단위 테스트성을 끌어올립니다.
+// Isolates the four stacks that the `compile()` body used to manipulate
+// directly (randomStack / skipStack / matchedStack / switchStack) into a
+// single class to improve readability and unit testability.
 //
-// 외부 동작은 100% 보존되어야 하며, 의미상 1:1 대응되도록 메서드를 추출합니다.
+// External behavior must be 100% preserved; methods are extracted to map 1:1 semantically.
 // (semver patch — Non-breaking)
 
 interface SwitchState {
-    /** 스위치 값 */
+    /** Switch value */
     value: number;
-    /** CASE가 매칭되었는지 */
+    /** Whether a CASE has matched */
     matched: boolean;
-    /** SKIP 이후 ENDSW까지 스킵 */
+    /** Skip until ENDSW after a SKIP */
     skipping: boolean;
 }
 
 /**
- * BMS 제어 흐름 상태 머신.
+ * BMS control-flow state machine.
  *
- * 4개 스택을 캡슐화하여 `compile()` 본문에서 직접 조작하지 않도록 합니다.
+ * Encapsulates the four stacks so the `compile()` body no longer manipulates them directly.
  *
- * ### 상태 의미
- * - `randomStack`: 각 #RANDOM 블록의 현재 랜덤 값 (LIFO)
- * - `skipStack`: 현재 블록을 스킵할지 여부 (depth와 동일하게 유지)
- * - `matchedStack`: #IF/#ELSEIF 중 하나라도 매칭됐는지 (depth와 동일하게 유지)
- * - `switchStack`: #SWITCH 프레임 스택
+ * ### State semantics
+ * - `randomStack`: current random value of each #RANDOM block (LIFO)
+ * - `skipStack`: whether the current block is skipped (kept in sync with depth)
+ * - `matchedStack`: whether any #IF/#ELSEIF branch has matched (kept in sync with depth)
+ * - `switchStack`: #SWITCH frame stack
  *
- * 초기 상태: `skipStack = [false]`, `matchedStack = [false]`.
- * 즉 어떠한 #IF/#SWITCH 안에 있지 않을 때 `isSkipped()`는 항상 `false`.
+ * Initial state: `skipStack = [false]`, `matchedStack = [false]`.
+ * That is, `isSkipped()` is always `false` when not inside any #IF/#SWITCH.
  */
 export class ControlFlowState {
     private readonly randomStack: number[] = [];
@@ -37,26 +37,26 @@ export class ControlFlowState {
     private readonly matchedStack: boolean[] = [false];
     private readonly switchStack: SwitchState[] = [];
 
-    /** 현재 라인이 스킵되어야 하는지 */
+    /** Whether the current line should be skipped */
     isSkipped(): boolean {
         return this.skipStack[this.skipStack.length - 1];
     }
 
     // ---- #RANDOM ----
 
-    /** `#RANDOM n` 처리 — 평가된 값을 스택에 push */
+    /** Handles `#RANDOM n` — pushes the evaluated value onto the stack */
     beginRandom(value: number): void {
         this.randomStack.push(value);
     }
 
-    /** `#ENDRANDOM` 처리 */
+    /** Handles `#ENDRANDOM` */
     endRandom(): void {
         this.randomStack.pop();
     }
 
     // ---- #IF / #ELSEIF / #ELSE / #ENDIF ----
 
-    /** `#IF n` 처리 */
+    /** Handles `#IF n` */
     beginIf(value: number): void {
         const randomValue = this.randomStack[this.randomStack.length - 1];
         const matches = randomValue === value;
@@ -64,11 +64,11 @@ export class ControlFlowState {
         this.matchedStack.push(matches);
     }
 
-    /** `#ELSEIF n` 처리 */
+    /** Handles `#ELSEIF n` */
     beginElseIf(value: number): void {
         const alreadyMatched = this.matchedStack[this.matchedStack.length - 1];
         if (alreadyMatched) {
-            // 이미 매칭된 분기가 있으면 스킵
+            // Skip if a branch has already matched
             this.skipStack[this.skipStack.length - 1] = true;
         } else {
             const randomValue = this.randomStack[this.randomStack.length - 1];
@@ -80,14 +80,14 @@ export class ControlFlowState {
         }
     }
 
-    /** `#ELSE` 처리 */
+    /** Handles `#ELSE` */
     beginElse(): void {
         const alreadyMatched = this.matchedStack[this.matchedStack.length - 1];
-        // 이미 매칭된 분기가 있으면 스킵, 없으면 실행
+        // Skip if a branch has already matched; otherwise execute
         this.skipStack[this.skipStack.length - 1] = alreadyMatched;
     }
 
-    /** `#ENDIF` 처리 */
+    /** Handles `#ENDIF` */
     endIf(): void {
         this.skipStack.pop();
         this.matchedStack.pop();
@@ -95,29 +95,29 @@ export class ControlFlowState {
 
     // ---- #SWITCH / #CASE / #SKIP / #DEF / #ENDSW ----
 
-    /** `#SWITCH n` 처리 */
+    /** Handles `#SWITCH n` */
     beginSwitch(value: number): void {
         this.switchStack.push({ value, matched: false, skipping: false });
     }
 
-    /** `#CASE n` 처리 */
+    /** Handles `#CASE n` */
     beginCase(value: number): void {
         const current = this.switchStack[this.switchStack.length - 1];
         if (!current) return;
         if (current.skipping || current.matched) {
-            // SKIP 이후거나 이미 매칭된 경우 스킵
+            // Skip when after a SKIP or already matched
             this.skipStack[this.skipStack.length - 1] = true;
         } else if (current.value === value) {
-            // 매칭됨 — 실행
+            // Matched — execute
             current.matched = true;
             this.skipStack[this.skipStack.length - 1] = false;
         } else {
-            // 매칭 안됨 — 스킵
+            // Not matched — skip
             this.skipStack[this.skipStack.length - 1] = true;
         }
     }
 
-    /** `#SKIP` 처리 — 현재 스위치 블록의 나머지를 스킵 */
+    /** Handles `#SKIP` — skips the rest of the current switch block */
     beginSkip(): void {
         const current = this.switchStack[this.switchStack.length - 1];
         if (!current) return;
@@ -125,24 +125,24 @@ export class ControlFlowState {
         this.skipStack[this.skipStack.length - 1] = true;
     }
 
-    /** `#DEF` 처리 — default 분기 */
+    /** Handles `#DEF` — the default branch */
     beginDef(): void {
         const current = this.switchStack[this.switchStack.length - 1];
         if (!current) return;
         if (current.skipping || current.matched) {
             this.skipStack[this.skipStack.length - 1] = true;
         } else {
-            // 아무 CASE도 매칭되지 않은 경우 실행
+            // Execute when no CASE has matched
             this.skipStack[this.skipStack.length - 1] = false;
         }
     }
 
-    /** `#ENDSW` 처리 */
+    /** Handles `#ENDSW` */
     endSwitch(): void {
         this.switchStack.pop();
-        // 스위치 종료 후 정상 실행 재개
+        // Resume normal execution after the switch ends
         if (this.skipStack.length > 1 && this.switchStack.length === 0) {
-            // 최상위 스킵 상태로 복원
+            // Restore the top-level skip state
             this.skipStack[this.skipStack.length - 1] = false;
         }
     }

@@ -1,10 +1,10 @@
 /**
- * BMS 채널 매핑 모듈
+ * BMS channel mapping module
  *
- * 이 파일은 외부 공개 API를 유지하는 thin re-export 레이어입니다.
- * 실제 전략 구현은 `src/parser/strategies/styleStrategy.ts` 에 있습니다.
+ * This file is a thin re-export layer that preserves the external public API.
+ * The actual strategy implementations live in `src/parser/strategies/styleStrategy.ts`.
  *
- * 아래의 named export 상수/함수는 기존 코드와 100% 호환됩니다.
+ * The named export constants/functions below are 100% compatible with existing code.
  */
 
 import {
@@ -15,7 +15,7 @@ import {
 } from '../../strategies/styleStrategy';
 
 // ────────────────────────────────────────────────────────────
-// Forward mapping 상수 (기존 export — 호환 유지)
+// Forward mapping constants (existing exports — kept for compatibility)
 // ────────────────────────────────────────────────────────────
 
 const _iidxSP = IIDX_STRATEGY.buildMapping('sp');
@@ -50,11 +50,11 @@ export const KEYBOARD_SP_LANDMINE = { D1:'1',D2:'2',D3:'3',D4:'4',D5:'5',D6:'6',
 export const KEYBOARD_DP_LANDMINE = { D1:'1',D2:'2',D3:'3',D4:'4',D5:'5',D6:'6',D7:'7',D8:'8',D9:'9',E1:'10',E2:'11',E3:'12',E4:'13',E5:'14',E6:'15',E7:'16',E8:'17',E9:'18' };
 
 // ────────────────────────────────────────────────────────────
-// 채널 유틸리티 함수 (기존 export — 호환 유지)
+// Channel utility functions (existing exports — kept for compatibility)
 // ────────────────────────────────────────────────────────────
 
 /**
- * 채널에서 노트 타입 결정
+ * Determines the note type from a channel.
  */
 export function getNoteTypeFromChannel(channel: string): 'playable' | 'invisible' | 'landmine' | 'bgm' {
   if (channel === '01') return 'bgm';
@@ -65,9 +65,9 @@ export function getNoteTypeFromChannel(channel: string): 'playable' | 'invisible
 }
 
 /**
- * 지뢰 노트 데미지 계산
- * @param value WAV 값 (hex string, 00-ZZ)
- * @returns 데미지 퍼센트 (0-100)
+ * Calculates landmine note damage.
+ * @param value WAV value (hex string, 00-ZZ)
+ * @returns damage percentage (0-100)
  */
 export function calculateLandmineDamage(value: string): number {
   if (!value || value === '00') return 0;
@@ -79,13 +79,13 @@ export function calculateLandmineDamage(value: string): number {
 }
 
 /**
- * BMS 스타일 타입 (기존 호환)
+ * BMS style type (backward compatible)
  */
 export type BMSStyle = 'iidx' | 'keyboard' | 'pms';
 
 /**
- * 자동 키 모드 감지용 통합 매핑 생성 (기존 호환 API)
- * 내부적으로 Strategy.buildMapping 에 위임합니다.
+ * Builds a combined mapping for automatic key-mode detection (backward-compatible API).
+ * Delegates internally to Strategy.buildMapping.
  */
 export function createCombinedMapping(
   style: BMSStyle = 'iidx',
@@ -101,8 +101,8 @@ export function createCombinedMapping(
 }
 
 /**
- * BMS 오브젝트에서 사용된 채널을 분석하여 스타일 자동 감지 (기존 호환 API)
- * 내부적으로 Strategy.detectStyle 에 위임합니다.
+ * Auto-detects the style by analyzing the channels used in BMS objects (backward-compatible API).
+ * Delegates internally to Strategy.detectStyle.
  */
 export function detectBMSStyle(
   objects: Array<{ channel: string; value: string }>,

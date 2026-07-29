@@ -1,7 +1,7 @@
 /**
- * BMS Style Strategy 공개 re-export
+ * Public re-exports for the BMS Style Strategy
  *
- * 외부(writer 등)에서 import 시 이 파일을 통해 접근합니다.
+ * External consumers (writer, etc.) access it through this file.
  */
 export type { BMSStyleId, ChannelStats, ChannelStyleStrategy } from './styleStrategy';
 export {
