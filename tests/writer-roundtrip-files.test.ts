@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, readdirSync } from 'fs';
+import { join } from 'path';
+import { fileURLToPath } from 'url';
 import { BMSParser, BMSWriter, Timing } from '../src';
 
 /**
@@ -12,20 +14,20 @@ import { BMSParser, BMSWriter, Timing } from '../src';
  * fixed point: writing the re-parsed chart again yields identical text.
  */
 
-const FILE_INPUTS = [
-  'C:/SourceCode/bms-electron-app/tests/e2e/fixtures/test-chart.bms',
+// Fixtures shipped with the repo (always run) plus optional local charts
+// (skipped when absent, e.g. on CI).
+const FIXTURE_DIR = fileURLToPath(new URL('./fixtures/roundtrip/', import.meta.url));
+const LOCAL_FIXTURES = readdirSync(FIXTURE_DIR).filter((f) => /\.(bms|bme|bml|pms)$/i.test(f)).map((f) => join(FIXTURE_DIR, f));
+const OPTIONAL_INPUTS = [
   'C:/SourceCode/bms-electron-app/tests/e2e/fixtures/test-4k.bms',
   'C:/SourceCode/bms-electron-app/tests/e2e/fixtures/test-5k.bms',
   'C:/SourceCode/bms-electron-app/tests/e2e/fixtures/test-7k.bms',
-  'C:/SourceCode/bms-electron-app/tests/e2e/fixtures/test-9k.bms',
   'C:/SourceCode/bms-electron-app/tests/e2e/fixtures/test-10k.bms',
-  'C:/SourceCode/bms-electron-app/tests/e2e/fixtures/test-14k.bms',
-  'C:/SourceCode/bms-electron-app/tests/e2e/fixtures/test-24k.bms',
   'C:/SourceCode/bms-electron-app/tests/e2e/fixtures/test-48k.bms',
-  'C:/SourceCode/bms-electron-app/tests/e2e/fixtures/test-stress.bms',
   'C:/SourceCode/10k-revive-backend/backend/example/me10k.bms',
   'C:/SourceCode/10k-revive-backend/backend/example/Collection - Piano Beatmap Set (CircusGalop) [10K HELL CIRCUS].bms',
 ].filter((p) => existsSync(p));
+const FILE_INPUTS = [...LOCAL_FIXTURES, ...OPTIONAL_INPUTS];
 
 const SYNTHETIC: Record<string, string> = {
   'hex bpm + bpm table + stop + measure length + lnobj + landmine + invisible + bgm layers': `#PLAYER 1
@@ -172,7 +174,7 @@ function expectEquivalent(name: string, chart1: NonNullable<BMSParser['chart']>,
 
 describe('Writer round-trip — real chart files', () => {
   for (const file of FILE_INPUTS) {
-    it(`round-trips ${file.split('/').pop()}`, async () => {
+    it(`round-trips ${file.split(/[\/]/).pop()}`, async () => {
       const buffer = readFileSync(file);
       const parser = new BMSParser();
       const source = await parser.readBuffer(buffer);
