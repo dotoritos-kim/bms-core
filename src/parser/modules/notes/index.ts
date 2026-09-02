@@ -147,8 +147,12 @@ class BMSNoteBuilder {
         const beat = this._getBeat(object);
         // BUG-P2: LNOBJ applies only to playable notes (excludes invisible/landmine)
         if (this._lnObj && noteType === 'playable' && object.value.toLowerCase() === this._lnObj) {
-            if (this._lastNote[channel]) {
-                this._lastNote[channel].endBeat = beat;
+            const head = this._lastNote[channel];
+            if (head) {
+                head.endBeat = beat;
+                head.endMeasure = object.measure;
+                head.endFraction = object.fraction;
+                delete this._lastNote[channel];
             }
         } else {
             const note: BMSNote = {
@@ -158,6 +162,8 @@ class BMSNoteBuilder {
                 column: this._getColumn(channel),
                 noteType: noteType,
                 channel: object.channel,
+                measure: object.measure,
+                fraction: object.fraction,
             };
 
             // Calculate damage for landmine notes
@@ -165,7 +171,10 @@ class BMSNoteBuilder {
                 note.damage = calculateLandmineDamage(object.value);
             }
 
-            this._lastNote[channel] = note;
+            // Only playable notes can be the head of an LNOBJ long note: an
+            // invisible (3x/4x) note on the same lane must not be paired, or it
+            // turns into a long note and is written back on the playable channel.
+            if (noteType === 'playable') this._lastNote[channel] = note;
             this._notes.push(note);
         }
     }
@@ -176,6 +185,8 @@ class BMSNoteBuilder {
         if (this._activeLN[channel]) {
             const note = this._activeLN[channel];
             note.endBeat = beat;
+            note.endMeasure = object.measure;
+            note.endFraction = object.fraction;
             this._notes.push(note);
             delete this._activeLN[channel];
         } else {
@@ -185,6 +196,8 @@ class BMSNoteBuilder {
                 column: this._getColumn(channel),
                 noteType: 'playable',
                 channel: object.channel,
+                measure: object.measure,
+                fraction: object.fraction,
             };
         }
     }

@@ -17,6 +17,12 @@ export interface BMSNote {
     endTick?: number;
     column?: string;
     keysound: string;
+    /** Source position (measure / fraction of measure) as written in the file. */
+    measure?: number;
+    fraction?: number;
+    /** Source position of the long-note end, when the note is a long note. */
+    endMeasure?: number;
+    endFraction?: number;
 
     /**
      * Note type
