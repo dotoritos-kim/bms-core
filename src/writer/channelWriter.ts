@@ -223,6 +223,30 @@ function findMinResolution(fractions: number[], maxResolution: number = 192): nu
   return maxResolution / divisor;
 }
 
+/** Smallest denominator (<= max) that represents `f` exactly, or null. */
+function smallestDenominator(f: number, max = 9999): number | null {
+  for (let d = 1; d <= max; d++) {
+    const n = f * d;
+    if (Math.abs(n - Math.round(n)) < 1e-7) return d;
+  }
+  return null;
+}
+
+/**
+ * Line resolution that reproduces every source fraction exactly (lcm of the
+ * per-fraction denominators), or null when it would exceed `max` slots.
+ */
+function findExactResolution(fractions: number[], max = 9999): number | null {
+  let res = 1;
+  for (const f of fractions) {
+    const d = smallestDenominator(f, max);
+    if (d === null) return null;
+    res = (res * d) / gcd(res, d);
+    if (res > max) return null;
+  }
+  return res;
+}
+
 /**
  * Computes the minimum resolution needed for BMS output from an array of ticks
  * e.g. 64th-note triplet (10 ticks) -> 3840/gcd(3840,10) = 3840/10 = 384
@@ -293,6 +317,12 @@ type ChannelEvent = {
   tickOffset?: number;
   /** Total tick count of this measure (only for notes with tick data) */
   ticksInMeasure?: number;
+  /**
+   * Exact fraction from the source file for notes that were not moved in the
+   * editor. Lets a measure be written back on its original line resolution
+   * (e.g. 1000 slots) instead of the nearest 960-ticks-per-beat position.
+   */
+  sourceFraction?: number;
 };
 
 /**
@@ -305,6 +335,22 @@ function createChannelDataForMeasure(
   resolution: number
 ): ChannelData | null {
   if (events.length === 0) return null;
+
+  // Untouched measures: write back on the source file's own line resolution so
+  // positions round-trip bit-exactly even when they are not on the tick grid.
+  const sourceFractions = events.every((e) => e.sourceFraction !== undefined)
+    ? events.map((e) => e.sourceFraction!)
+    : null;
+  const exactRes = sourceFractions ? findExactResolution(sourceFractions) : null;
+  if (exactRes !== null) {
+    const dataArray: string[] = new Array(exactRes).fill('00');
+    for (const event of events) {
+      const slot = Math.round(event.sourceFraction! * exactRes);
+      if (slot < exactRes) dataArray[slot] = event.value;
+    }
+    if (dataArray.every((v) => v === '00')) return null;
+    return { channel, measure, data: dataArray.join('') };
+  }
 
   // If all events have tick data, compute the tick-based minimum resolution (lossless)
   const tickEvents = events.filter(
@@ -443,12 +489,19 @@ export function writeNoteChannels(
     }
     const events = channelMap.get(channel)!;
 
+    // A note still sitting where the parser put it keeps its exact fraction.
+    const unmoved = tickPos !== null
+      && note.measure === noteMeasure
+      && typeof note.fraction === 'number'
+      && Math.abs(note.fraction - tickPos.fraction) < 1 / 3840;
+
     // Add the note
     events.push({
       fraction: quantizedFraction,
       value: note.keysound.toUpperCase().padStart(2, '0').slice(0, 2),
       tickOffset,
       ticksInMeasure: ticksInMeasureForNote,
+      sourceFraction: unmoved ? note.fraction : undefined,
     });
 
     // Emit multi-keysound layers (additionalKeysounds)
@@ -489,6 +542,11 @@ export function writeNoteChannels(
         ? (note.endTick - getTotalTicksUpToMeasure(endMeasure, timeSignatures))
         : undefined;
       const endTicksInMeasure = note.endTick !== undefined ? (endPos as ReturnType<typeof tickToFractionInMeasure>).ticksInMeasure : undefined;
+      const endUnmoved = note.endTick !== undefined
+        && note.endMeasure === endMeasure
+        && typeof note.endFraction === 'number'
+        && Math.abs(note.endFraction - endPos.fraction) < 1 / 3840;
+      const endSourceFraction = endUnmoved ? note.endFraction : undefined;
 
       if (lnMode === 'lnobj' && lnObjValue && note.column) {
         // LNOBJ mode: write the LNOBJ marker at the end position on the playable channel
@@ -506,6 +564,7 @@ export function writeNoteChannels(
             value: lnObjValue.toUpperCase().padStart(2, '0').slice(0, 2),
             tickOffset: endTickOffset,
             ticksInMeasure: endTicksInMeasure,
+            sourceFraction: endSourceFraction,
           });
         }
       } else {
@@ -525,6 +584,7 @@ export function writeNoteChannels(
             value: note.keysound.toUpperCase().padStart(2, '0').slice(0, 2),
             tickOffset: endTickOffset,
             ticksInMeasure: endTicksInMeasure,
+            sourceFraction: endSourceFraction,
           });
         }
       }

@@ -106,6 +106,9 @@ export interface EditableBMSNote extends BMSNote {
   tick: number;
   /** End tick for long notes. */
   endTick?: number;
+  /** Measure / fraction of the long-note end as parsed from the source (unmoved ends round-trip exactly). */
+  endMeasure?: number;
+  endFraction?: number;
   /** The measure the note is in */
   measure: number;
   /** Fractional position within the measure (0-1) */

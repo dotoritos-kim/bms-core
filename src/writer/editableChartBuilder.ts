@@ -254,6 +254,9 @@ export class EditableChartBuilder {
         const beat = chart.measureToBeat(obj.measure, obj.fraction);
         if (activeLN[normalized]) {
           activeLN[normalized].endBeat = beat;
+          activeLN[normalized].endTick = Math.round(beat * 960);
+          activeLN[normalized].endMeasure = obj.measure;
+          activeLN[normalized].endFraction = obj.fraction;
           notes.push(activeLN[normalized]);
           delete activeLN[normalized];
         } else {
@@ -275,6 +278,9 @@ export class EditableChartBuilder {
         if (lnObj && isPlayableChannel && obj.value.toLowerCase() === lnObj && lastNote[channel]) {
           const beat = chart.measureToBeat(obj.measure, obj.fraction);
           lastNote[channel].endBeat = beat;
+          lastNote[channel].endTick = Math.round(beat * 960);
+          lastNote[channel].endMeasure = obj.measure;
+          lastNote[channel].endFraction = obj.fraction;
           delete lastNote[channel];
         } else {
           const note = objectToNote(obj, noteIdCounter++, chart, channelMapping);

@@ -155,8 +155,15 @@ function expectEquivalent(name: string, chart1: NonNullable<BMSParser['chart']>,
   for (let i = 0; i < a.probes.length; i++) {
     expect(b.seconds[i], `${name}: beatToSeconds(${a.probes[i]})`).toBeCloseTo(a.seconds[i], 6);
   }
+  const NUMERIC_HEADERS = new Set(['bpm', 'total', 'playlevel', 'rank', 'difficulty', 'player', 'lntype']);
   for (const h of IMPORTANT_HEADERS) {
-    if (a.headers[h] !== undefined) expect(b.headers[h], `${name}: header #${h.toUpperCase()}`).toBe(a.headers[h]);
+    if (a.headers[h] === undefined) continue;
+    if (NUMERIC_HEADERS.has(h) && Number.isFinite(parseFloat(a.headers[h]))) {
+      // "240.00" and "240" are the same BPM; the writer normalises number formatting.
+      expect(parseFloat(b.headers[h]), `${name}: header #${h.toUpperCase()}`).toBeCloseTo(parseFloat(a.headers[h]), 6);
+    } else {
+      expect(b.headers[h], `${name}: header #${h.toUpperCase()}`).toBe(a.headers[h]);
+    }
   }
   for (const [k, v] of Object.entries(a.headers)) {
     if (/^wav[0-9a-z]{2}$/.test(k)) expect(b.headers[k], `${name}: ${k}`).toBe(v);
