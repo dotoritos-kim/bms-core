@@ -160,7 +160,8 @@ export class BMSWriter {
       }
       if (lnObjValue) {
         headers.lnobj = lnObjValue;
-        headers.lntype = undefined;
+        // Keep an existing #LNTYPE: it governs 5x/6x channels and coexists with
+        // #LNOBJ; dropping it changed the file for no gain.
         // Add a silent WAV definition entry for LNOBJ (if missing)
         if (!headers.wav.has(lnObjValue) && !headers.wav.has(lnObjValue.toLowerCase())) {
           headers.wav = new Map(headers.wav);
