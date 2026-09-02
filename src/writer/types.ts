@@ -35,7 +35,20 @@ export interface BMSWriterOptions {
 /**
  * Editable BMS chart data
  */
+/**
+ * Channel-layout style of a chart (which BMS channels map to which columns).
+ * Recorded by `BMSWriter.fromBMSChart` so `write()` can reproduce the same
+ * channel layout — an IIDX-only reverse map silently drops 2P (DP) columns
+ * and rewrites PMS 9-key channels.
+ */
+export interface EditableChartStyle {
+  id: 'iidx' | 'keyboard' | 'pms';
+  isDP: boolean;
+}
+
 export interface EditableBMSChart {
+  /** Channel layout to use when writing (optional; auto-detected from columns when absent) */
+  style?: EditableChartStyle;
   /** Header information */
   headers: BMSHeaderData;
   /** Note data */

@@ -42,9 +42,12 @@ export {
     writeChannels,
     IIDX_SP_REVERSE,
     IIDX_DP_REVERSE,
+    styleForKeyMode,
+    resolveReverseMapping,
 } from './writer';
 export type {
     BMSWriterOptions,
+    EditableChartStyle,
     EditableBMSChart,
     EditableBMSNote,
     BMSHeaderData,

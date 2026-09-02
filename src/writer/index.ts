@@ -39,6 +39,7 @@
  * ```
  */
 
+import { STRATEGIES } from '../parser/strategies/styleStrategy';
 import type {
   BMSWriterOptions,
   EditableBMSChart,
@@ -48,6 +49,7 @@ import type {
   BMSStopEvent,
   BMSBgaEvent,
   ReverseChannelMapping,
+  EditableChartStyle
 } from './types';
 import { writeHeaders, createEmptyHeaders, parseHeadersToData } from './headerWriter';
 import {
@@ -61,6 +63,7 @@ import { EditableChartBuilder, buildEmptyChart } from './editableChartBuilder';
 // Type re-exports
 export type {
   BMSWriterOptions,
+  EditableChartStyle,
   EditableBMSChart,
   EditableBMSNote,
   BMSHeaderData,
@@ -77,6 +80,38 @@ export { writeChannels, IIDX_SP_REVERSE, IIDX_DP_REVERSE };
 /**
  * BMS Writer class
  */
+/** Style implied by an editor key mode (used when a chart was created in the editor). */
+export function styleForKeyMode(keyMode: string): EditableChartStyle {
+  switch (keyMode) {
+    case '9K': return { id: 'pms', isDP: false };
+    case '10K': case '14K': return { id: 'iidx', isDP: true };
+    case '12K': case '18K': case '24K': case '48K': return { id: 'keyboard', isDP: true };
+    default: return { id: 'iidx', isDP: false };
+  }
+}
+
+/**
+ * Resolve the column → channel mapping for a chart: the recorded style wins,
+ * otherwise infer it from the columns actually used by the notes.
+ */
+export function resolveReverseMapping(chart: EditableBMSChart): ReverseChannelMapping {
+  let style = chart.style;
+  if (!style) {
+    const columns = new Set<string>();
+    for (const n of chart.notes) if (n.column) columns.add(n.column);
+    const numeric = [...columns].map((c) => parseInt(c, 10)).filter((n) => Number.isFinite(n));
+    const maxCol = numeric.length ? Math.max(...numeric) : 0;
+    const hasScratch = columns.has('SC') || columns.has('SC2') || columns.has('FZ') || columns.has('FZ2');
+    if (maxCol > 14) style = { id: 'keyboard', isDP: true };
+    else if (columns.has('SC2') || columns.has('FZ2') || (hasScratch && maxCol > 7) || chart.headers.player === 3) style = { id: 'iidx', isDP: true };
+    else if (!hasScratch && maxCol >= 8 && maxCol <= 9) style = { id: 'pms', isDP: false };
+    else style = { id: 'iidx', isDP: false };
+  }
+  const strategy = STRATEGIES.find((st) => st.id === style!.id);
+  if (!strategy) return style.isDP ? IIDX_DP_REVERSE : IIDX_SP_REVERSE;
+  return strategy.buildReverseMapping(style.isDP ? 'dp' : 'sp');
+}
+
 export class BMSWriter {
   private options: BMSWriterOptions;
 
@@ -95,9 +130,13 @@ export class BMSWriter {
    */
   write(
     chart: EditableBMSChart,
-    mapping: ReverseChannelMapping = IIDX_SP_REVERSE
+    mapping?: ReverseChannelMapping
   ): string {
     const lines: string[] = [];
+    // Pick the channel layout that matches the chart. The old default
+    // (IIDX SP) silently dropped every 2P column of a DP chart and rewrote
+    // PMS 9-key channels 22-25 as 18/19.
+    mapping = mapping ?? resolveReverseMapping(chart);
 
     // LNOBJ mode: set the lnobj value in the headers, remove lntype
     const headers = { ...chart.headers };

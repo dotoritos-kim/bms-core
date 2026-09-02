@@ -268,15 +268,19 @@ export class EditableChartBuilder {
 
       // 1x/2x, 3x/4x, Dx/Ex: normal/invisible/landmine notes
       if (['1','2','3','4','D','E'].includes(firstChar)) {
-        const normalized = normalizeChannel(channel);
-        if (lnObj && obj.value.toLowerCase() === lnObj && lastNote[normalized]) {
+        // LNOBJ markers live on the playable channels only (1x/2x); an
+        // invisible (3x/4x) note on the same lane must never be turned into
+        // the long note's head (it would then be written back as playable).
+        const isPlayableChannel = firstChar === '1' || firstChar === '2';
+        if (lnObj && isPlayableChannel && obj.value.toLowerCase() === lnObj && lastNote[channel]) {
           const beat = chart.measureToBeat(obj.measure, obj.fraction);
-          lastNote[normalized].endBeat = beat;
+          lastNote[channel].endBeat = beat;
+          delete lastNote[channel];
         } else {
           const note = objectToNote(obj, noteIdCounter++, chart, channelMapping);
           if (note) {
             notes.push(note);
-            if (note.column) lastNote[normalized] = note;
+            if (note.column && isPlayableChannel) lastNote[channel] = note;
           }
         }
         continue;
@@ -289,13 +293,27 @@ export class EditableChartBuilder {
       }
     }
 
+    // Measure sizes (#xxx02) are consumed by the parser into chart.timeSignatures
+    // and never appear as objects, so read them from there.
+    for (const [measure, size] of chart.timeSignatures.entries()) {
+      if (!timeSignatures.has(measure)) timeSignatures.set(measure, size);
+    }
+
     // Assign BGM note channel groups
     assignBgmChannels(notes);
 
     // Group multi-keysounds
     const groupedNotes = groupMultiKeysounds(notes);
 
-    return { headers, notes: groupedNotes, timeSignatures, bpmChanges, stopEvents, bgaEvents };
+    return {
+      style: { id: strategy.id, isDP },
+      headers,
+      notes: groupedNotes,
+      timeSignatures,
+      bpmChanges,
+      stopEvents,
+      bgaEvents,
+    };
   }
 }
 

@@ -52,6 +52,16 @@ export class TimeSignatures {
     }
 
     /**
+     * Every explicitly set measure size as `[measure, size]` pairs
+     * (measures left at the default 1.0 are not listed).
+     */
+    entries(): Array<[number, number]> {
+        return Object.keys(this._values)
+            .map((k) => [Number(k), this._values[Number(k)]] as [number, number])
+            .sort((a, b) => a[0] - b[0]);
+    }
+
+    /**
      * Gets the number of beats in the specified measure.
      *
      * Since one beat is equivalent to a quarter note in 4/4 time,
