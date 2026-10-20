@@ -10,6 +10,7 @@ import type {
   BMSBpmChange,
   BMSStopEvent,
   BMSBgaEvent,
+  BMSExtraObject,
   ChannelData,
   ReverseChannelMapping,
   BMSWriterOptions,
@@ -1133,6 +1134,51 @@ export function writeBgaChannels(
 }
 
 /**
+ * Writes objects on channels the editor does not model back verbatim. Each
+ * measure/channel keeps the exact line resolution of its source positions;
+ * objects that share a slot (e.g. several `#xxx99` lines) go on separate lines.
+ */
+export function writeExtraChannels(
+  extraObjects: BMSExtraObject[],
+  options: BMSWriterOptions = {},
+  warnings: WriterWarnings = new WriterWarnings()
+): ChannelData[] {
+  const resolution = options.resolution || 192;
+  const groups = new Map<string, BMSExtraObject[]>();
+  for (const obj of extraObjects) {
+    if (!isMeasureInRange(obj.measure)) {
+      warnings.add('out-of-range');
+      continue;
+    }
+    const key = `${obj.measure}:${obj.channel}`;
+    let list = groups.get(key);
+    if (!list) groups.set(key, (list = []));
+    list.push(obj);
+  }
+
+  const channelDataList: ChannelData[] = [];
+  for (const list of groups.values()) {
+    const { measure, channel } = list[0];
+    const fractions = list.map((o) => o.fraction);
+    const res = findExactResolution(fractions) ?? resolution;
+    // One line per "layer": the nth object of each slot goes on the nth line.
+    const layers: ChannelEvent[][] = [];
+    const used = new Map<number, number>();
+    for (const obj of list) {
+      const slot = Math.round(obj.fraction * res);
+      const layer = used.get(slot) ?? 0;
+      used.set(slot, layer + 1);
+      (layers[layer] ??= []).push({ fraction: obj.fraction, value: obj.value, sourceFraction: obj.fraction });
+    }
+    for (const events of layers) {
+      const data = createChannelDataForMeasure(measure, channel, events, res);
+      if (data) channelDataList.push(data);
+    }
+  }
+  return channelDataList;
+}
+
+/**
  * Converts time signatures into channel data (channel 02)
  */
 export function writeTimeSignatureChannels(
@@ -1204,6 +1250,11 @@ export function writeChannels(
 
   // Notes
   allChannelData.push(...writeNoteChannels(chart.notes, mapping, options, chart.timeSignatures, warnings));
+
+  // Channels the editor does not model (TEXT, JUDGE, extension lanes, ...)
+  if (chart.extraObjects && chart.extraObjects.length > 0) {
+    allChannelData.push(...writeExtraChannels(chart.extraObjects, options, warnings));
+  }
 
   // Sort: measure number -> channel number
   allChannelData.sort((a, b) => {

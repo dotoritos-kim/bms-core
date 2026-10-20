@@ -58,6 +58,7 @@ export type {
     BMSBpmChange,
     BMSStopEvent,
     BMSBgaEvent,
+    BMSExtraObject,
     ReverseChannelMapping,
     ChartDiff,
 } from './writer';

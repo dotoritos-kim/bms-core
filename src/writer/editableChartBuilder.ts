@@ -16,6 +16,7 @@ import type {
   BMSBpmChange,
   BMSStopEvent,
   BMSBgaEvent,
+  BMSExtraObject,
 } from './types';
 import { parseHeadersToData, createEmptyHeaders } from './headerWriter';
 import type { BMSChart } from '../parser/bms/chart';
@@ -171,6 +172,7 @@ export class EditableChartBuilder {
     const bpmChanges: BMSBpmChange[] = [];
     const stopEvents: BMSStopEvent[] = [];
     const bgaEvents: BMSBgaEvent[] = [];
+    const extraObjects: BMSExtraObject[] = [];
     const timeSignatures = new Map<number, number>();
 
     // BPM / STOP definition maps
@@ -252,6 +254,16 @@ export class EditableChartBuilder {
         continue;
       }
 
+      // Lane channels the style has no column for (extension lanes 1A-2Z,
+      // or a channel outside the detected layout) cannot become notes: an
+      // editable note without a column is written back as BGM (channel 01),
+      // which moved them. Keep them verbatim instead.
+      const isLaneChannel = ['1','2','3','4','5','6','D','E'].includes(firstChar);
+      if (isLaneChannel && channelMapping[channel] === undefined) {
+        extraObjects.push({ measure: obj.measure, fraction: obj.fraction, channel: obj.channel, value: obj.value });
+        continue;
+      }
+
       // 5x/6x: long note channels
       if (firstChar === '5' || firstChar === '6') {
         const normalized = normalizeChannel(channel);
@@ -300,7 +312,12 @@ export class EditableChartBuilder {
       if (channel === '01') {
         const note = objectToNote(obj, noteIdCounter++, chart, channelMapping);
         if (note) notes.push(note);
+        continue;
       }
+
+      // Everything else (05, 0A-0E, 97/98, 99 TEXT, A0 JUDGE, A1-A6, ...) is
+      // not edited but must survive a save.
+      extraObjects.push({ measure: obj.measure, fraction: obj.fraction, channel: obj.channel, value: obj.value });
     }
 
     // Measure sizes (#xxx02) are consumed by the parser into chart.timeSignatures
@@ -323,6 +340,7 @@ export class EditableChartBuilder {
       bpmChanges,
       stopEvents,
       bgaEvents,
+      extraObjects,
     };
   }
 }

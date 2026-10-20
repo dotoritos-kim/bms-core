@@ -66,6 +66,26 @@ export interface EditableBMSChart {
   stopEvents: BMSStopEvent[];
   /** BGA events */
   bgaEvents: BMSBgaEvent[];
+  /**
+   * Objects on channels the editor does not model (e.g. 05, 0A, 0B-0E, 97/98,
+   * 99 TEXT, A0 JUDGE, A1-A6, extension lanes 1A-2Z). Kept verbatim so a
+   * load → save round trip does not drop them. Optional for compatibility.
+   */
+  extraObjects?: BMSExtraObject[];
+}
+
+/**
+ * An object on a channel the editor does not model, kept as-is.
+ */
+export interface BMSExtraObject {
+  /** Measure number */
+  measure: number;
+  /** Fractional position within the measure (exact source value) */
+  fraction: number;
+  /** Two-character channel as written in the source file */
+  channel: string;
+  /** Two-character object value as written in the source file */
+  value: string;
 }
 
 /**

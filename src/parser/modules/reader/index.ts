@@ -7,17 +7,19 @@
 import { ReaderOptions } from './types';
 
 /**
- * List of encodings to try (in priority order)
- * - UTF-8: Unicode standard (includes emoji)
- * - Shift-JIS: most common in Japanese BMS files
- * - GBK: Simplified Chinese (Windows)
- * - GB18030: Simplified Chinese (Unicode-compatible)
- * - Big5: Traditional Chinese (Taiwan/Hong Kong)
- * - EUC-KR: Korean
+ * Legacy (non-Unicode) encodings, in tie-break priority order. UTF-8 is tried
+ * first and strictly; among the legacy encodings that decode without errors,
+ * the one whose output looks most like real text wins (see `plausibility`).
+ * - Shift-JIS: most common in Japanese BMS files (wins ties)
+ * - GBK / GB18030: Simplified Chinese
+ * - Big5: Traditional Chinese
+ * - EUC-KR (WHATWG: windows-949): Korean
  * - Windows-1251: Russian/Cyrillic (compatibility with old BMS charts)
+ *
+ * Simply taking the first encoding that decodes without errors never reached
+ * EUC-KR: GBK (and often Shift-JIS) accept almost every EUC-KR byte sequence.
  */
-const ENCODINGS_TO_TRY = [
-    'utf-8',
+const LEGACY_ENCODINGS = [
     'shift-jis',
     'gbk',
     'gb18030',
@@ -25,6 +27,62 @@ const ENCODINGS_TO_TRY = [
     'euc-kr',
     'windows-1251',
 ] as const;
+
+type LegacyEncoding = (typeof LEGACY_ENCODINGS)[number];
+
+/**
+ * Frequent Hangul syllables. Real Korean text is dominated by them, while
+ * Shift-JIS / GBK bytes misread as windows-949 land on rare syllables.
+ */
+const COMMON_HANGUL = new Set(
+    '이의가에는을를은다고하지서도로한기사자대리수아나인그일정어시전부만것들우주보해국상장비소내여제공적' +
+    '연관방위성실미중모신오유물개화조면문무경발동구원생간선회분세계거마학교과진명등요용작통결음악곡노래' +
+    '사랑너나우리별꿈밤하늘바람눈물마음날안녕그대빛영원세상봄여름가을겨울소녀소년춤불꽃새길손끝너의나의' +
+    '처럼까지부터에서으로라고하고했다있다없다된다된하는했던있는없는같은위한대한통해모든우리들저것이것' +
+    '그것여기거기언제어디무엇왜어떻게좋아싫어보고싶어기억시작마지막처음다시함께혼자오늘내일어제지금' +
+    '파도바다하얀검은붉은푸른노란달해빛속밖앞뒤위아래곁품숨소리목소리향기얼굴미소웃음눈빛꽃잎나비' +
+    '천사악마전설영웅전쟁평화운명시간공간우주은하행성혜성태양구름비번개폭풍천둥얼음화염어둠광명' +
+    '편곡작사작곡보컬피아노기타드럼베이스믹스리믹스버전에디트오리지널스페셜라이트하드노멀이지',
+);
+
+function hangulWeight(code: number, encoding: LegacyEncoding): number {
+    if (encoding !== 'euc-kr') return 0;
+    return COMMON_HANGUL.has(String.fromCharCode(code)) ? 2 : 0.5;
+}
+
+/**
+ * How plausible a character is as real text under the encoding it came from.
+ * Shared symbols score 1; script-specific characters score by how typical they
+ * are for that encoding's language.
+ */
+function charWeight(code: number, encoding: LegacyEncoding): number {
+    if (code >= 0xac00 && code <= 0xd7a3) return hangulWeight(code, encoding); // Hangul syllables
+    if (code >= 0x3131 && code <= 0x318e) return encoding === 'euc-kr' ? 0.5 : 0; // Hangul jamo
+    if (code >= 0x3040 && code <= 0x30ff) return encoding === 'shift-jis' ? 2 : 1; // Kana
+    if (code >= 0xff61 && code <= 0xff9f) return encoding === 'shift-jis' ? 1 : 0; // Half-width kana
+    if ((code >= 0x4e00 && code <= 0x9fff) || (code >= 0x3400 && code <= 0x4dbf)) {
+        return encoding === 'euc-kr' ? 0.5 : encoding === 'windows-1251' ? 0 : 1; // CJK ideographs
+    }
+    if (code >= 0x0400 && code <= 0x04ff) return encoding === 'windows-1251' ? 1 : 0; // Cyrillic
+    if ((code >= 0x3000 && code <= 0x303f) || (code >= 0xff01 && code <= 0xff5e)) return 1; // CJK punct / full-width
+    if (code >= 0x2010 && code <= 0x27bf) return 1; // Punctuation, arrows, shapes (★, ♪ ...)
+    if (code >= 0x00a0 && code <= 0x024f) return 0.3; // Latin-1 / Latin extended
+    return 0;
+}
+
+/** Average plausibility of the non-ASCII characters (0 when there are none). */
+function plausibility(text: string, encoding: LegacyEncoding): number {
+    let total = 0;
+    let score = 0;
+    const limit = Math.min(text.length, 200_000);
+    for (let i = 0; i < limit; i++) {
+        const code = text.charCodeAt(i);
+        if (code < 0x80) continue;
+        total++;
+        score += charWeight(code, encoding);
+    }
+    return total === 0 ? 0 : score / total;
+}
 
 /**
  * Detects the encoding by checking the BOM (Byte Order Mark).
@@ -82,22 +140,31 @@ function decodeWithAutoDetect(buffer: Uint8Array): { text: string; encoding: str
         };
     }
 
-    // 2. Try each encoding in order
-    for (const encoding of ENCODINGS_TO_TRY) {
-        try {
-            const decoder = new TextDecoder(encoding, { fatal: false });
-            const text = decoder.decode(buffer);
-
-            if (isValidDecode(text)) {
-                return { text, encoding };
-            }
-        } catch {
-            // Move on if the encoding is not supported
-            continue;
-        }
+    // 2. Strict UTF-8 (ASCII-only files end here too)
+    try {
+        const text = new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+        if (isValidDecode(text)) return { text, encoding: 'utf-8' };
+    } catch {
+        // not UTF-8
     }
 
-    // 3. Fall back to UTF-8 when all encodings fail (replacement characters allowed)
+    // 3. Legacy encodings: the most plausible valid decode wins; ties keep the
+    //    priority order (Shift-JIS first, as before).
+    let best: { text: string; encoding: string; score: number } | null = null;
+    for (const encoding of LEGACY_ENCODINGS) {
+        let text: string;
+        try {
+            text = new TextDecoder(encoding, { fatal: false }).decode(buffer);
+        } catch {
+            continue; // encoding not supported by this runtime
+        }
+        if (!isValidDecode(text)) continue;
+        const score = plausibility(text, encoding);
+        if (!best || score > best.score) best = { text, encoding, score };
+    }
+    if (best) return { text: best.text, encoding: best.encoding };
+
+    // 4. Fall back to UTF-8 when all encodings fail (replacement characters allowed)
     const decoder = new TextDecoder('utf-8', { fatal: false });
     return { text: decoder.decode(buffer), encoding: 'utf-8' };
 }

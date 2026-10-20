@@ -48,6 +48,7 @@ import type {
   BMSBpmChange,
   BMSStopEvent,
   BMSBgaEvent,
+  BMSExtraObject,
   ReverseChannelMapping,
   EditableChartStyle,
   BMSWriterWarning,
@@ -76,6 +77,7 @@ export type {
   BMSBpmChange,
   BMSStopEvent,
   BMSBgaEvent,
+  BMSExtraObject,
   ReverseChannelMapping,
   BMSWriterWarning,
   BMSWriterWarningCode,
@@ -260,6 +262,7 @@ export class BMSWriter {
       bpmChanges: chart.bpmChanges.map((b) => ({ ...b })),
       stopEvents: chart.stopEvents.map((s) => ({ ...s })),
       bgaEvents: chart.bgaEvents.map((b) => ({ ...b })),
+      ...(chart.extraObjects ? { extraObjects: chart.extraObjects.map((o) => ({ ...o })) } : {}),
     };
   }
 
