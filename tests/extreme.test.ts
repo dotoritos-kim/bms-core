@@ -243,7 +243,8 @@ describe('Extreme Edge Cases', () => {
         expect(mine.damage).toBeDefined();
         expect(typeof mine.damage).toBe('number');
         expect(mine.damage!).toBeGreaterThanOrEqual(0);
-        expect(mine.damage!).toBeLessThanOrEqual(100);
+        // ZZ is an instant game over (non-finite); other values are 0-100%
+        if (Number.isFinite(mine.damage!)) expect(mine.damage!).toBeLessThanOrEqual(100);
       }
     });
 

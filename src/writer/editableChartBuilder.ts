@@ -8,6 +8,7 @@
  * A channel-dispatch approach without a Visitor interface achieves the same separation.
  */
 
+import { canonicalObjectId, isBase62Value } from '../utils/objectId';
 import type {
   EditableBMSChart,
   EditableBMSNote,
@@ -173,11 +174,14 @@ export class EditableChartBuilder {
     const timeSignatures = new Map<number, number>();
 
     // BPM / STOP definition maps
+    // #BASE 62: object IDs are case-sensitive; base36 IDs compare case-insensitively.
+    const base62 = isBase62Value(chart.headers.get('base'));
+    const canon = (id: string) => canonicalObjectId(id, base62);
     const bpmMap = new Map<string, number>();
-    headers.bpmDef.forEach((value, key) => bpmMap.set(key.toLowerCase(), value));
+    headers.bpmDef.forEach((value, key) => bpmMap.set(canon(key), value));
 
     const stopMap = new Map<string, number>();
-    headers.stopDef.forEach((value, key) => stopMap.set(key.toLowerCase(), value));
+    headers.stopDef.forEach((value, key) => stopMap.set(canon(key), value));
 
     // Auto-detect channel mapping (using a Strategy)
     const objects = chart.objects.allSorted();
@@ -190,7 +194,7 @@ export class EditableChartBuilder {
     // Long note pairing state
     const activeLN: Record<string, EditableBMSNote> = {};
     const lastNote: Record<string, EditableBMSNote> = {};
-    const lnObj = (chart.headers.get('lnobj') || '').toLowerCase();
+    const lnObj = canon(chart.headers.get('lnobj') || '');
 
     for (const obj of objects) {
       const channel = obj.channel.toUpperCase();
@@ -214,12 +218,12 @@ export class EditableChartBuilder {
 
       // Channel 08: extended BPM
       if (channel === '08') {
-        const bpmKey = obj.value.toLowerCase();
+        const bpmKey = canon(obj.value);
         const bpm = bpmMap.get(bpmKey);
         if (bpm !== undefined) {
           bpmChanges.push({
             measure: obj.measure, fraction: obj.fraction, bpm, extended: true,
-            bpmDefKey: bpmKey.toUpperCase(),
+            bpmDefKey: bpmKey,
           });
         }
         continue;
@@ -227,12 +231,12 @@ export class EditableChartBuilder {
 
       // Channel 09: STOP
       if (channel === '09') {
-        const stopKey = obj.value.toLowerCase();
+        const stopKey = canon(obj.value);
         const duration = stopMap.get(stopKey);
         if (duration !== undefined) {
           stopEvents.push({
             measure: obj.measure, fraction: obj.fraction, duration,
-            stopDefKey: stopKey.toUpperCase(),
+            stopDefKey: stopKey,
           });
         }
         continue;
@@ -242,7 +246,7 @@ export class EditableChartBuilder {
       if (channel === '04' || channel === '06' || channel === '07') {
         bgaEvents.push({
           measure: obj.measure, fraction: obj.fraction,
-          bmpKey: obj.value.toUpperCase(),
+          bmpKey: canon(obj.value),
           layer: channel as '04' | '06' | '07',
         });
         continue;
@@ -275,7 +279,7 @@ export class EditableChartBuilder {
         // invisible (3x/4x) note on the same lane must never be turned into
         // the long note's head (it would then be written back as playable).
         const isPlayableChannel = firstChar === '1' || firstChar === '2';
-        if (lnObj && isPlayableChannel && obj.value.toLowerCase() === lnObj && lastNote[channel]) {
+        if (lnObj && isPlayableChannel && canon(obj.value) === lnObj && lastNote[channel]) {
           const beat = chart.measureToBeat(obj.measure, obj.fraction);
           lastNote[channel].endBeat = beat;
           lastNote[channel].endTick = Math.round(beat * 960);

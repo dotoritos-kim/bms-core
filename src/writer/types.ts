@@ -30,6 +30,11 @@ export interface BMSWriterOptions {
    * false: uses only the fixed value of the resolution option (legacy behavior)
    */
   autoResolution?: boolean;
+  /**
+   * `#BASE 62` object IDs (case-sensitive, '01'..'zz'). Derived from the
+   * chart's `#BASE` header when omitted.
+   */
+  base62?: boolean;
 }
 
 /**

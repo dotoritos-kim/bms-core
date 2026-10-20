@@ -33,6 +33,10 @@ export type {
     SpacingSegment,
 } from './parser';
 
+// Spec defaults / constants
+export { DEFAULT_BPM } from './parser/modules/timing';
+export { LANDMINE_INSTANT_GAMEOVER, calculateLandmineDamage } from './parser/modules/notes/channels';
+
 // Writer
 export {
     BMSWriter,
@@ -57,3 +61,17 @@ export type {
     ReverseChannelMapping,
     ChartDiff,
 } from './writer';
+
+// Object IDs (#BASE 36 / #BASE 62)
+export {
+    BASE36_DIGITS,
+    BASE62_DIGITS,
+    isBase62Value,
+    isBase62Headers,
+    canonicalObjectId,
+    keysoundKey,
+    maxObjectIds,
+    objectIdIndex,
+    objectIdAt,
+    allocateObjectIds,
+} from './utils/objectId';

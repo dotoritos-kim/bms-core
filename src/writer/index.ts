@@ -64,6 +64,7 @@ import {
 } from './channelWriter';
 import type { BMSChart } from '../parser/bms/chart';
 import { EditableChartBuilder, buildEmptyChart } from './editableChartBuilder';
+import { canonicalObjectId, isBase62Headers, maxObjectIds, objectIdAt } from '../utils/objectId';
 
 // Type re-exports
 export type {
@@ -152,6 +153,9 @@ export class BMSWriter {
     mapping = mapping ?? resolveReverseMapping(chart);
 
     const warnings = new WriterWarnings();
+    // #BASE 62 charts keep case-sensitive object IDs end to end.
+    const base62 = this.options.base62 ?? isBase62Headers(chart.headers);
+    const options: BMSWriterOptions = { ...this.options, base62 };
 
     // Give every BPM / STOP event a valid channel and definition key (works on
     // copies; new #BPMxx / #STOPxx definitions are added to the written header only).
@@ -165,12 +169,12 @@ export class BMSWriter {
       if (!lnObjValue) {
         // Auto-assign the largest unused WAV ID as the LNOBJ marker
         const usedIds = new Set<string>();
-        for (const key of headers.wav.keys()) usedIds.add(key.toUpperCase());
+        for (const key of headers.wav.keys()) usedIds.add(canonicalObjectId(key, base62));
         for (const n of chart.notes) {
-          if (n.keysound) usedIds.add(n.keysound.toUpperCase());
+          if (n.keysound) usedIds.add(canonicalObjectId(n.keysound, base62));
         }
-        for (let i = 1295; i >= 1; i--) {
-          const candidate = i.toString(36).toUpperCase().padStart(2, '0');
+        for (let i = maxObjectIds(base62); i >= 1; i--) {
+          const candidate = objectIdAt(i, base62);
           if (!usedIds.has(candidate)) {
             lnObjValue = candidate;
             break;
@@ -187,6 +191,7 @@ export class BMSWriter {
           // The LNOBJ marker works without a WAV definition, but it is added for compatibility with some players
         }
         this.options.lnObjValue = lnObjValue;
+        options.lnObjValue = lnObjValue;
       }
     } else {
       // Channel mode: remove lnobj, keep lntype (if present)
@@ -196,7 +201,7 @@ export class BMSWriter {
     }
 
     // Write headers
-    lines.push(...writeHeaders(headers, this.options));
+    lines.push(...writeHeaders(headers, options));
 
     // Write channel data
     const chartToWrite: EditableBMSChart = {
@@ -205,7 +210,7 @@ export class BMSWriter {
       bpmChanges: timing.bpmChanges,
       stopEvents: timing.stopEvents,
     };
-    lines.push(...writeChannels(chartToWrite, mapping, this.options, warnings));
+    lines.push(...writeChannels(chartToWrite, mapping, options, warnings));
     this.lastWarnings = warnings.toList();
 
     // Join with line breaks

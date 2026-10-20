@@ -10,12 +10,15 @@ import { Timing } from '../timing';
  * In some rhythm games, the amount of scrolling per beat can vary.
  * StepMania's `#SCROLL` segments are one example.
  *
- * When #BASEBPM is set, the scroll speed is normalized against BPM changes.
- * normalizedSpeed = currentBPM / baseBPM
+ * Positions advance by beats × `#SCROLL` only. BPM is deliberately NOT
+ * folded in: the player already advances the current beat at BPM/60 beats
+ * per second, so scaling position by currentBPM / baseBPM as well would make
+ * on-screen speed grow with BPM² instead of BPM. `#BASEBPM` is the reference
+ * for hi-speed auto-setting; the BPM ratio is exposed separately via
+ * `bpmRatioAtBeat()` / `effectiveSpeed()`.
  */
 export class Positioning {
     _speedcore: Speedcore;
-    _normalizedSpeedcore: Speedcore | null = null;
     _baseBpm: number | null = null;
     _timing: Timing | null = null;
 
@@ -23,93 +26,19 @@ export class Positioning {
      * Creates a Positioning from the given `segments`.
      * @param segments
      * @param baseBpm the #BASEBPM value (if set)
-     * @param timing Timing object (needed to reflect BPM changes)
+     * @param timing Timing object (used by `bpmRatioAtBeat()` / `effectiveSpeed()`)
      */
     constructor(segments: PositioningSegment[], baseBpm?: number | null, timing?: Timing | null) {
         this._speedcore = new Speedcore(segments);
         this._baseBpm = baseBpm ?? null;
         this._timing = timing ?? null;
-
-        // If Timing is available, build normalized segments that reflect BPM changes.
-        // Without BASEBPM, the initial BPM is used as the reference.
-        if (this._timing) {
-            this._normalizedSpeedcore = this._buildNormalizedSpeedcore(segments);
-        }
     }
 
     /**
-     * Builds a Speedcore that reflects BPM changes.
-     * Merges SCROLL segments with BPM change points to produce new segments.
-     * Without BASEBPM, the initial BPM is used as the reference.
-     */
-    private _buildNormalizedSpeedcore(scrollSegments: PositioningSegment[]): Speedcore {
-        if (!this._timing) {
-            return new Speedcore(scrollSegments);
-        }
-
-        const bpmSegments = this._timing.getBpmSegments();
-        // Use the initial BPM when BASEBPM is not set
-        const baseBpm = this._baseBpm ?? this._timing.getInitialBpm();
-
-        // If baseBpm is invalid, return without normalization
-        if (!baseBpm || baseBpm <= 0) {
-            return new Speedcore(scrollSegments);
-        }
-
-        // Collect all event points (SCROLL + BPM)
-        const eventBeats = new Set<number>();
-        for (const seg of scrollSegments) eventBeats.add(seg.t);
-        for (const seg of bpmSegments) eventBeats.add(seg.beat);
-        const sortedBeats = Array.from(eventBeats).sort((a, b) => a - b);
-
-        // Compute the SCROLL speed and BPM at each point to build new segments
-        const normalizedSegments: SpeedSegment[] = [];
-        let position = 0;
-
-        for (let i = 0; i < sortedBeats.length; i++) {
-            const beat = sortedBeats[i];
-            const scrollSpeed = this._speedcore.dx(beat);
-            const currentBpm = this._timing.bpmAtBeat(beat);
-            const bpmRatio = currentBpm / baseBpm;
-            const normalizedSpeed = scrollSpeed * bpmRatio;
-
-            // If there is a previous segment, compute the position
-            if (i > 0) {
-                const prevBeat = sortedBeats[i - 1];
-                const prevSeg = normalizedSegments[normalizedSegments.length - 1];
-                position = prevSeg.x + (beat - prevBeat) * prevSeg.dx;
-            }
-
-            normalizedSegments.push({
-                t: beat,
-                x: position,
-                dx: normalizedSpeed,
-                inclusive: true,
-            });
-        }
-
-        // If there are no segments, add a default one
-        if (normalizedSegments.length === 0) {
-            normalizedSegments.push({
-                t: 0,
-                x: 0,
-                dx: 1,
-                inclusive: true,
-            });
-        }
-
-        return new Speedcore(normalizedSegments);
-    }
-
-    /**
-     * Returns the scroll speed at the specified beat.
-     * When #BASEBPM is set, it is normalized by the BPM ratio.
+     * Returns the scroll speed (position units per beat) at the specified beat.
      * @param beat beat number
      */
     speed(beat: number) {
-        if (this._normalizedSpeedcore) {
-            return this._normalizedSpeedcore.dx(beat);
-        }
         return this._speedcore.dx(beat);
     }
 
@@ -136,13 +65,9 @@ export class Positioning {
 
     /**
      * Returns the total accumulated scroll amount at the specified beat.
-     * When #BASEBPM is set, BPM normalization is applied.
      * @param beat beat number
      */
     position(beat: number) {
-        if (this._normalizedSpeedcore) {
-            return this._normalizedSpeedcore.x(beat);
-        }
         return this._speedcore.x(beat);
     }
 
@@ -170,7 +95,7 @@ export class Positioning {
     /**
      * Creates a Positioning object from a BMSChart.
      * @param {BMSChart} chart the BMSChart to create the Positioning from
-     * @param {Timing} timing Timing object (needed for #BASEBPM normalization, optional)
+     * @param {Timing} timing Timing object (needed for `bpmRatioAtBeat()`, optional)
      */
     static fromBMSChart(chart: BMSChart, timing?: Timing) {
         void BMSChart;

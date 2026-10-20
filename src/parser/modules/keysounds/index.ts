@@ -3,6 +3,7 @@
 
 import { uniq, values } from '../../utils/lodash';
 import { BMSChart } from '../../bms/chart';
+import { isBase62Value, keysoundKey } from '../../../utils/objectId';
 
 /**
  * A simple mapping between keysound IDs and file names.
@@ -16,9 +17,12 @@ import { BMSChart } from '../../bms/chart';
 export class KeySounds {
     _map: { [id: string]: string };
     _volumeMap: { [id: string]: number };
-    constructor(map: { [id: string]: string }, volumeMap?: { [id: string]: number }) {
+    /** `#BASE 62`: IDs are case-sensitive and keys keep their case. */
+    readonly base62: boolean;
+    constructor(map: { [id: string]: string }, volumeMap?: { [id: string]: number }, base62 = false) {
         this._map = map;
         this._volumeMap = volumeMap ?? {};
+        this.base62 = base62;
     }
 
     /**
@@ -27,7 +31,7 @@ export class KeySounds {
      * @returns the sound file name
      */
     get(id: string): string | undefined {
-        return this._map[id.toLowerCase()];
+        return this._map[keysoundKey(id, this.base62)];
     }
 
     /**
@@ -37,7 +41,7 @@ export class KeySounds {
      * @returns the volume (0-100)
      */
     getVolume(id: string): number {
-        return this._volumeMap[id.toLowerCase()] ?? 100;
+        return this._volumeMap[keysoundKey(id, this.base62)] ?? 100;
     }
 
     /**
@@ -50,6 +54,8 @@ export class KeySounds {
 
     /**
      * Returns the mapping from keysound IDs to keysound file names.
+     * Keys are lower-case for base36 charts and keep their case for `#BASE 62`
+     * (see `keysoundKey`).
      *
      * **Caution:** this method returns the internal data structure used by
      * this Keysounds object. Do not mutate it!
@@ -73,10 +79,11 @@ export class KeySounds {
         void BMSChart;
         const map: { [id: string]: string } = {};
         const volumeMap: { [id: string]: number } = {};
+        const base62 = isBase62Value(chart.headers.get('base'));
         chart.headers.each(function (name, value) {
             const wavMatch = name.match(/^wav(\S\S)$/i);
             if (wavMatch) {
-                map[wavMatch[1].toLowerCase()] = value;
+                map[keysoundKey(wavMatch[1], base62)] = value;
                 return;
             }
             // #VOLWAVxx yy — per-keysound volume (0-100)
@@ -84,10 +91,10 @@ export class KeySounds {
             if (volMatch) {
                 const vol = parseInt(value, 10);
                 if (!isNaN(vol)) {
-                    volumeMap[volMatch[1].toLowerCase()] = Math.max(0, Math.min(100, vol));
+                    volumeMap[keysoundKey(volMatch[1], base62)] = Math.max(0, Math.min(100, vol));
                 }
             }
         });
-        return new KeySounds(map, volumeMap);
+        return new KeySounds(map, volumeMap, base62);
     }
 }

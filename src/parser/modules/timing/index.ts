@@ -5,6 +5,9 @@ import { SpeedSegment } from '../speedcore/segment';
 
 const precedence = { bpm: 1, stop: 2 };
 
+/** BPM applied when #BPM is omitted (BMS spec default). */
+export const DEFAULT_BPM = 130;
+
 /**
  * Timing represents the timing information of a chart.
  * A Timing object provides facilities to synchronize between metric time
@@ -179,7 +182,7 @@ export class Timing {
                 actions.push({ type: 'stop', beat: beat, stopBeats: stopBeats });
             }
         });
-        return new Timing(+chart.headers.get('bpm')! || 60, actions);
+        return new Timing(+chart.headers.get('bpm')! || DEFAULT_BPM, actions);
     }
 }
 

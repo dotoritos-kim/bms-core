@@ -65,17 +65,25 @@ export function getNoteTypeFromChannel(channel: string): 'playable' | 'invisible
 }
 
 /**
+ * Landmine damage for #WAVZZ: the spec makes ZZ an instant STAGE FAILED rather
+ * than a gauge amount, so it is signalled with a non-finite value.
+ */
+export const LANDMINE_INSTANT_GAMEOVER = Number.POSITIVE_INFINITY;
+
+/**
  * Calculates landmine note damage.
- * @param value WAV value (hex string, 00-ZZ)
- * @returns damage percentage (0-100)
+ * Per spec the [01-ZY] value is base-36 and the gauge drops by value/2 %
+ * (e.g. 1E = 50 -> 25%); ZZ is an instant game over.
+ * @param value object value (base-36 string, 00-ZZ)
+ * @returns damage percentage (0-100), or LANDMINE_INSTANT_GAMEOVER for ZZ
  */
 export function calculateLandmineDamage(value: string): number {
   if (!value || value === '00') return 0;
   const upper = value.toUpperCase();
-  if (upper === 'ZZ') return 100;
+  if (upper === 'ZZ') return LANDMINE_INSTANT_GAMEOVER;
   const decimal = parseInt(upper, 36);
-  if (decimal >= 255) return 100;
-  return (decimal / 256) * 100;
+  if (isNaN(decimal)) return 0;
+  return Math.min(100, decimal / 2);
 }
 
 /**

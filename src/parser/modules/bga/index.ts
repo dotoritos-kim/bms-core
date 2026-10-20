@@ -10,6 +10,7 @@
  * - dx, dy: display offset (optional)
  */
 
+import { canonicalObjectId, isBase62Value } from '../../../utils/objectId';
 import type { BMSChart } from '../../bms/chart';
 
 export interface BGADefinition {
@@ -33,18 +34,21 @@ export interface BGADefinition {
 
 export class BGA {
     private _map: Map<string, BGADefinition> = new Map();
+    /** `#BASE 62`: IDs are case-sensitive. */
+    private _base62 = false;
 
     /**
      * Extracts BGA definitions from a BMSChart.
      */
     static fromBMSChart(chart: BMSChart): BGA {
         const bga = new BGA();
+        bga._base62 = isBase62Value(chart.headers.get('base'));
 
         // Scan every header looking for #BGAxx
         chart.headers.each((name: string, value: string) => {
             const bgaMatch = name.match(/^BGA([0-9A-Z]{2})$/i);
             if (bgaMatch && value) {
-                const bgaId = bgaMatch[1].toUpperCase();
+                const bgaId = canonicalObjectId(bgaMatch[1], bga._base62);
                 const parsed = bga.parseBGAValue(value);
                 if (parsed) {
                     bga._map.set(bgaId, {
@@ -70,7 +74,7 @@ export class BGA {
             return null;
         }
 
-        const bmpId = parts[0].toUpperCase();
+        const bmpId = canonicalObjectId(parts[0], this._base62);
         const x1 = parseInt(parts[1], 10);
         const y1 = parseInt(parts[2], 10);
         const x2 = parseInt(parts[3], 10);
@@ -102,7 +106,7 @@ export class BGA {
      * Looks up a BGA definition.
      */
     get(id: string): BGADefinition | undefined {
-        return this._map.get(id.toUpperCase());
+        return this._map.get(canonicalObjectId(id, this._base62));
     }
 
     /**
@@ -127,6 +131,6 @@ export class BGA {
      * Checks whether a BGA definition exists.
      */
     has(id: string): boolean {
-        return this._map.has(id.toUpperCase());
+        return this._map.has(canonicalObjectId(id, this._base62));
     }
 }

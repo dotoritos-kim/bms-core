@@ -8,23 +8,31 @@ import type { CompileResult } from './types';
 
 export type { CompileResult, CompileWarning, CompileStats, WavStats, WarningCode } from './types';
 
+// Control-flow commands (shared by BMS and DTX).
+// The delimiter between a command and its value is optional (`#random5`), and the
+// typo forms `#RONDAM n`, `#END IF` and `#IFEND` are accepted (see the command memo,
+// "Examples of Mistakes").
+const controlFlowMatchers = {
+    // #RANDOM control flow
+    random: /^#R(?:ANDOM|ONDAM)\s*(\d+)$/i,
+    setrandom: /^#SETRANDOM\s*(\d+)$/i,
+    endrandom: /^#ENDRANDOM$/i,
+    if: /^#IF\s*(\d+)$/i,
+    elseif: /^#ELSEIF\s*(\d+)$/i,
+    else: /^#ELSE$/i,
+    endif: /^#(?:END\s*IF|IFEND)$/i,
+    // #SWITCH control flow
+    switch: /^#SWITCH\s*(\d+)$/i,
+    setswitch: /^#SETSWITCH\s*(\d+)$/i,
+    case: /^#CASE\s*(\d+)$/i,
+    skip: /^#SKIP$/i,
+    def: /^#DEF$/i,
+    endsw: /^#ENDSW$/i,
+};
+
 const matchers = {
     bms: {
-        // #RANDOM control flow
-        random: /^#RANDOM\s+(\d+)$/i,
-        setrandom: /^#SETRANDOM\s+(\d+)$/i,
-        endrandom: /^#ENDRANDOM$/i,
-        if: /^#IF\s+(\d+)$/i,
-        elseif: /^#ELSEIF\s+(\d+)$/i,
-        else: /^#ELSE$/i,
-        endif: /^#ENDIF$/i,
-        // #SWITCH control flow
-        switch: /^#SWITCH\s+(\d+)$/i,
-        setswitch: /^#SETSWITCH\s+(\d+)$/i,
-        case: /^#CASE\s+(\d+)$/i,
-        skip: /^#SKIP$/i,
-        def: /^#DEF$/i,
-        endsw: /^#ENDSW$/i,
+        ...controlFlowMatchers,
         // Channels and headers
         timeSignature: /^#(\d\d\d)02:(\S*)$/,
         channel: /^#(?:EXT\s+#)?(\d\d\d)(\S\S):(\S*)$/,
@@ -33,21 +41,7 @@ const matchers = {
         header: /^#(\w+)(?:[:\s]\s*(\S.*))?$/,
     },
     dtx: {
-        // #RANDOM control flow
-        random: /^#RANDOM\s+(\d+)$/i,
-        setrandom: /^#SETRANDOM\s+(\d+)$/i,
-        endrandom: /^#ENDRANDOM$/i,
-        if: /^#IF\s+(\d+)$/i,
-        elseif: /^#ELSEIF\s+(\d+)$/i,
-        else: /^#ELSE$/i,
-        endif: /^#ENDIF$/i,
-        // #SWITCH control flow
-        switch: /^#SWITCH\s+(\d+)$/i,
-        setswitch: /^#SETSWITCH\s+(\d+)$/i,
-        case: /^#CASE\s+(\d+)$/i,
-        skip: /^#SKIP$/i,
-        def: /^#DEF$/i,
-        endsw: /^#ENDSW$/i,
+        ...controlFlowMatchers,
         // Channels and headers
         timeSignature: /^#(\d\d\d)02:\s*(\S*)$/,
         channel: /^#(?:EXT\s+#)?(\d\d\d)(\S\S):\s*(\S*)$/,
@@ -73,11 +67,11 @@ export function compile(text: string, options?: Partial<BMSCompileOptions>): Com
 
     const matcher = (options.format && matchers[options.format]) || matchers.bms;
 
-    // Control-flow state machine (P4: encapsulates the four stacks)
+    // Control-flow state machine (P4: single frame stack for #RANDOM/#IF/#SWITCH)
     const cf = new ControlFlowState();
-    // Fixed #SETRANDOM value (for tests)
+    // Fixed value for every #RANDOM (test hook; an in-file #SETRANDOM n uses its own n)
     const setRandomValue = options.setrandom;
-    // Fixed #SETSWITCH value (for tests)
+    // Fixed value for every #SWITCH (test hook; an in-file #SETSWITCH n uses its own n)
     const setSwitchValue = options.setswitch;
 
     // WAV/BMP collection stats (for debugging)
@@ -112,21 +106,26 @@ export function compile(text: string, options?: Partial<BMSCompileOptions>): Com
     };
 
     // Debug: log the BMS file size
-    const lineCount = text.split(/\r\n|\r|\n/).length;
+    const lines = splitLines(text);
+    const lineCount = lines.length;
+    // #CASE labels of each #SWITCH, keyed by the #SWITCH line number
+    const switchLabels = collectSwitchLabels(lines, matcher);
 
-    eachLine(text, function (text, lineNumber) {
+    lines.forEach(function (text, index) {
+        const lineNumber = index + 1;
         let flow = true;
         if (text.charAt(0) !== '#') return;
         match(text)
             .when(matcher.random, function (m) {
                 result.controlSentences += 1;
-                // Use the fixed value when #SETRANDOM is set
-                const value = setRandomValue !== undefined ? setRandomValue : rng(+m[1]);
+                // Inside a skipped region the value is irrelevant — don't consume randomness
+                const value = cf.isSkipped() ? 0 : setRandomValue !== undefined ? setRandomValue : rng(+m[1]);
                 cf.beginRandom(value);
             })
-            .when(matcher.setrandom, function () {
-                // #SETRANDOM pins the value of the next #RANDOM (already handled via options)
+            .when(matcher.setrandom, function (m) {
+                // #SETRANDOM n is a #RANDOM that always generates n
                 result.controlSentences += 1;
+                cf.beginRandom(+m[1]);
             })
             .when(matcher.endrandom, function () {
                 result.controlSentences += 1;
@@ -151,12 +150,13 @@ export function compile(text: string, options?: Partial<BMSCompileOptions>): Com
             // #SWITCH control flow
             .when(matcher.switch, function (m) {
                 result.controlSentences += 1;
-                const value = setSwitchValue !== undefined ? setSwitchValue : rng(+m[1]);
-                cf.beginSwitch(value);
+                const value = cf.isSkipped() ? 0 : setSwitchValue !== undefined ? setSwitchValue : rng(+m[1]);
+                cf.beginSwitch(value, switchLabels.get(lineNumber));
             })
-            .when(matcher.setswitch, function () {
-                // #SETSWITCH is handled via options
+            .when(matcher.setswitch, function (m) {
+                // #SETSWITCH n is a #SWITCH that always generates n
                 result.controlSentences += 1;
+                cf.beginSwitch(+m[1], switchLabels.get(lineNumber));
             })
             .when(matcher.case, function (m) {
                 result.controlSentences += 1;
@@ -179,6 +179,7 @@ export function compile(text: string, options?: Partial<BMSCompileOptions>): Com
             });
         if (flow) return;
         const skipped = cf.isSkipped();
+        if (skipped) result.skippedSentences += 1;
         match(text)
             .when(matcher.timeSignature, function (m) {
                 result.channelSentences += 1;
@@ -190,12 +191,11 @@ export function compile(text: string, options?: Partial<BMSCompileOptions>): Com
             })
             .when(matcher.header, function (m) {
                 result.headerSentences += 1;
-                // Always collect WAV/BMP definitions regardless of #RANDOM branches.
-                // WAV/BMP are just file mappings; whether they are used is decided by the channel data.
-                // This also lets WAVs from branches not selected by #RANDOM be loaded.
+                // Headers in unselected #RANDOM/#SWITCH branches are ignored like any other
+                // line — WAV/BMP included. Otherwise `#IF 1 / #WAV01 a.wav` + `#IF 2 /
+                // #WAV01 b.wav` would always resolve to the last (possibly unselected) file.
                 const headerName = m[1].toLowerCase();
                 if (headerName.startsWith('wav') || headerName.startsWith('bmp')) {
-                    chart.headers.set(m[1], m[2]);
                     wavHeadersCollected++;
                     if (skipped) {
                         wavHeadersInSkippedBlocks++;
@@ -204,9 +204,8 @@ export function compile(text: string, options?: Partial<BMSCompileOptions>): Com
                     if (sampleWavHeaders.length < 20) {
                         sampleWavHeaders.push(m[1]);
                     }
-                } else if (!skipped) {
-                    chart.headers.set(m[1], m[2]);
                 }
+                if (!skipped) chart.headers.set(m[1], m[2]);
             })
             .else(function () {
                 warn(lineNumber, '잘못된 명령', 'INVALID_DIRECTIVE');
@@ -221,7 +220,7 @@ export function compile(text: string, options?: Partial<BMSCompileOptions>): Com
     if (options.logger) {
         const log = options.logger.info ?? (() => undefined);
         log(`[BMS Compiler] Parsed ${lineCount} lines: ${result.headerSentences} headers, ${result.channelSentences} channels, ${result.controlSentences} control`);
-        log(`[BMS Compiler] WAV/BMP headers: ${wavHeadersCollected} total (${wavHeadersInSkippedBlocks} from skipped #RANDOM/#SWITCH blocks)`);
+        log(`[BMS Compiler] WAV/BMP headers: ${wavHeadersCollected} total (${wavHeadersInSkippedBlocks} ignored in skipped #RANDOM/#SWITCH blocks)`);
         if (sampleWavHeaders.length > 0) {
             log(`[BMS Compiler] Sample WAV headers: [${sampleWavHeaders.join(', ')}]`);
         }
@@ -255,14 +254,37 @@ export function compile(text: string, options?: Partial<BMSCompileOptions>): Com
     }
 }
 
-function eachLine(text: string, callback: (line: string, index: number) => void) {
-    text.split(/\r\n|\r|\n/)
-        .map(function (line) {
-            return line.trim();
-        })
-        .forEach(function (line, index) {
-            callback(line, index + 1);
-        });
+function splitLines(text: string): string[] {
+    return text.split(/\r\n|\r|\n/).map(function (line) {
+        return line.trim();
+    });
+}
+
+/**
+ * Pre-scans the #CASE labels of every #SWITCH/#SETSWITCH block (keyed by the
+ * 1-based line number of the #SWITCH line), so that a #DEF written before the
+ * matching #CASE can be skipped. Labels of nested switches belong to the
+ * innermost open switch.
+ */
+function collectSwitchLabels(lines: string[], matcher: typeof controlFlowMatchers): Map<number, Set<number>> {
+    const labels = new Map<number, Set<number>>();
+    const open: Set<number>[] = [];
+    lines.forEach(function (line, index) {
+        if (line.charAt(0) !== '#') return;
+        if (matcher.switch.test(line) || matcher.setswitch.test(line)) {
+            const set = new Set<number>();
+            labels.set(index + 1, set);
+            open.push(set);
+            return;
+        }
+        const m = matcher.case.exec(line);
+        if (m) {
+            if (open.length > 0) open[open.length - 1].add(+m[1]);
+        } else if (matcher.endsw.test(line)) {
+            open.pop();
+        }
+    });
+    return labels;
 }
 
 export interface BMSCompileOptions {

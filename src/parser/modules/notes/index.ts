@@ -1,3 +1,4 @@
+import { isBase62Value, keysoundKey } from '../../../utils/objectId';
 import { assertBMSNote, BMSNote, NoteType } from './note';
 import { invariant } from '@epic-web/invariant';
 import * as ChannelMapping from './channels';
@@ -77,6 +78,7 @@ class BMSNoteBuilder {
     _activeLN: { [channel: string]: BMSNote };
     _lastNote: { [channel: string]: BMSNote };
     _lnObj: string;
+    _base62 = false;
     _channelMapping: { [channel: string]: string };
     _objects: BMSObject[];
     constructor(chart: BMSChart, options: { mapping: BMSChannelNoteMapping }) {
@@ -87,7 +89,9 @@ class BMSNoteBuilder {
         this._notes = [];
         this._activeLN = {};
         this._lastNote = {};
-        this._lnObj = (this._chart.headers.get('lnobj') || '').toLowerCase();
+        // #BASE 62 IDs are case-sensitive; base36 IDs are compared lower-case.
+        this._base62 = isBase62Value(this._chart.headers.get('base'));
+        this._lnObj = keysoundKey(this._chart.headers.get('lnobj') || '', this._base62);
         this._channelMapping = this._mapping;
         this._objects = this._chart.objects.allSorted();
     }
@@ -146,7 +150,7 @@ class BMSNoteBuilder {
         const channel = this._normalizeChannel(object.channel);
         const beat = this._getBeat(object);
         // BUG-P2: LNOBJ applies only to playable notes (excludes invisible/landmine)
-        if (this._lnObj && noteType === 'playable' && object.value.toLowerCase() === this._lnObj) {
+        if (this._lnObj && noteType === 'playable' && keysoundKey(object.value, this._base62) === this._lnObj) {
             const head = this._lastNote[channel];
             if (head) {
                 head.endBeat = beat;

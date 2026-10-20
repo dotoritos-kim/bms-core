@@ -81,10 +81,22 @@ describe('ControlFlowState', () => {
         cf.endSwitch();
     });
 
-    it('#SWITCH #DEF skipped if a case matched', () => {
+    it('#SWITCH #DEF is reached by fallthrough when the matched case has no #SKIP', () => {
+        // Spec (#SWITCH-FAMILY): "#DEF will also be applied by fallthrough, if #SKIP is
+        // omitted even when #CASE has already agreed with desired value."
         const cf = new ControlFlowState();
         cf.beginSwitch(1);
         cf.beginCase(1);
+        cf.beginDef();
+        expect(cf.isSkipped()).toBe(false);
+        cf.endSwitch();
+    });
+
+    it('#SWITCH #DEF skipped if a case matched and was terminated by #SKIP', () => {
+        const cf = new ControlFlowState();
+        cf.beginSwitch(1);
+        cf.beginCase(1);
+        cf.beginSkip();
         cf.beginDef();
         expect(cf.isSkipped()).toBe(true);
         cf.endSwitch();
@@ -103,18 +115,14 @@ describe('ControlFlowState', () => {
         cf.endSwitch();
     });
 
-    it('#ENDSW preserves existing skipStack at top level (legacy behavior)', () => {
-        // The original compiler only resets skipStack on #ENDSW when skipStack.length > 1.
-        // At top level (no enclosing #IF) skipStack length is 1, so a skipped #CASE
-        // leaves the skip flag set even after #ENDSW. This test locks in that legacy
-        // behavior so future refactors don't change it inadvertently.
+    it('#ENDSW restores normal flow at top level', () => {
+        // Lines after #ENDSW are top-level again and always applied.
         const cf = new ControlFlowState();
         cf.beginSwitch(1);
         cf.beginCase(2); // skipped
         expect(cf.isSkipped()).toBe(true);
         cf.endSwitch();
-        // Behavior preserved (intentional).
-        expect(cf.isSkipped()).toBe(true);
+        expect(cf.isSkipped()).toBe(false);
     });
 
     it('#ENDSW restores normal flow when nested inside an #IF', () => {
@@ -125,7 +133,6 @@ describe('ControlFlowState', () => {
         cf.beginCase(2); // skipped
         expect(cf.isSkipped()).toBe(true);
         cf.endSwitch();
-        // skipStack.length > 1 here, so it resets to false.
         expect(cf.isSkipped()).toBe(false);
         cf.endIf();
         cf.endRandom();

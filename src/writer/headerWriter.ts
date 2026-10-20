@@ -3,7 +3,9 @@
  * Converts BMSHeaderData into BMS header strings
  */
 
+import { canonicalObjectId, isBase62Headers, isBase62Value, objectIdIndex } from '../utils/objectId';
 import type { BMSHeaderData, BMSWriterOptions } from './types';
+import { DEFAULT_BPM } from '../parser/modules/timing';
 
 /** Default header order */
 const DEFAULT_HEADER_ORDER = [
@@ -54,21 +56,24 @@ function formatHeaderValue(key: string, value: unknown): string | null {
  */
 function formatDefinitions(
   prefix: string,
-  definitions: Map<string, string | number>
+  definitions: Map<string, string | number>,
+  base62 = false,
 ): string[] {
   const lines: string[] = [];
 
-  // Sort keys (00-ZZ order)
+  // Sort keys in ID order (00-ZZ, or 00-zz for #BASE 62)
   const sortedKeys = Array.from(definitions.keys()).sort((a, b) => {
-    const aNum = parseInt(a, 36);
-    const bNum = parseInt(b, 36);
+    const aNum = objectIdIndex(a, base62);
+    const bNum = objectIdIndex(b, base62);
+    if (Number.isNaN(aNum) || Number.isNaN(bNum)) return a < b ? -1 : a > b ? 1 : 0;
     return aNum - bNum;
   });
 
   for (const key of sortedKeys) {
     const value = definitions.get(key);
     if (value !== undefined && value !== null && value !== '') {
-      lines.push(`#${prefix}${key.toUpperCase()} ${value}`);
+      // #BASE 62 IDs are case-sensitive: never fold them.
+      lines.push(`#${prefix}${canonicalObjectId(key, base62)} ${value}`);
     }
   }
 
@@ -84,6 +89,7 @@ export function writeHeaders(
 ): string[] {
   const lines: string[] = [];
   const headerOrder = options.headerOrder || DEFAULT_HEADER_ORDER;
+  const base62 = options.base62 ?? isBase62Headers(headers);
 
   // Add comments
   if (options.includeComments) {
@@ -127,7 +133,7 @@ export function writeHeaders(
     if (options.includeComments) {
       lines.push('*---------------------- BPM DEFINITIONS');
     }
-    lines.push(...formatDefinitions('BPM', headers.bpmDef as Map<string, string | number>));
+    lines.push(...formatDefinitions('BPM', headers.bpmDef as Map<string, string | number>, base62));
     lines.push('');
   }
 
@@ -136,7 +142,7 @@ export function writeHeaders(
     if (options.includeComments) {
       lines.push('*---------------------- STOP DEFINITIONS');
     }
-    lines.push(...formatDefinitions('STOP', headers.stopDef as Map<string, string | number>));
+    lines.push(...formatDefinitions('STOP', headers.stopDef as Map<string, string | number>, base62));
     lines.push('');
   }
 
@@ -145,7 +151,7 @@ export function writeHeaders(
     if (options.includeComments) {
       lines.push('*---------------------- WAV DEFINITIONS');
     }
-    lines.push(...formatDefinitions('WAV', headers.wav as Map<string, string | number>));
+    lines.push(...formatDefinitions('WAV', headers.wav as Map<string, string | number>, base62));
     lines.push('');
   }
 
@@ -154,7 +160,7 @@ export function writeHeaders(
     if (options.includeComments) {
       lines.push('*---------------------- BMP DEFINITIONS');
     }
-    lines.push(...formatDefinitions('BMP', headers.bmp as Map<string, string | number>));
+    lines.push(...formatDefinitions('BMP', headers.bmp as Map<string, string | number>, base62));
     lines.push('');
   }
 
@@ -197,13 +203,19 @@ export function parseHeadersToData(
   headers: { get: (name: string) => string | undefined; each: (callback: (key: string, value: string) => void) => void }
 ): BMSHeaderData {
   const data = createEmptyHeaders();
+  // A chart without #BPM plays at the spec default; write that back so timing survives a save.
+  data.bpm = DEFAULT_BPM;
+
+  // #BASE 62: definition IDs keep their case (they are case-sensitive)
+  const base62 = isBase62Value(headers.get('base'));
+  const idOf = (raw: string) => canonicalObjectId(raw, base62);
 
   headers.each((key, value) => {
     const lowerKey = key.toLowerCase();
 
     // WAV definitions
     if (lowerKey.startsWith('wav')) {
-      const wavKey = key.slice(3).toUpperCase();
+      const wavKey = idOf(key.slice(3));
       if (wavKey) {
         data.wav.set(wavKey, value);
       }
@@ -212,7 +224,7 @@ export function parseHeadersToData(
 
     // BMP definitions
     if (lowerKey.startsWith('bmp')) {
-      const bmpKey = key.slice(3).toUpperCase();
+      const bmpKey = idOf(key.slice(3));
       if (bmpKey) {
         data.bmp.set(bmpKey, value);
       }
@@ -221,7 +233,7 @@ export function parseHeadersToData(
 
     // BPM definitions (extended BPM)
     if (lowerKey.startsWith('bpm') && lowerKey.length > 3) {
-      const bpmKey = key.slice(3).toUpperCase();
+      const bpmKey = idOf(key.slice(3));
       if (bpmKey) {
         data.bpmDef.set(bpmKey, parseFloat(value));
       }
@@ -230,7 +242,7 @@ export function parseHeadersToData(
 
     // STOP definitions
     if (lowerKey.startsWith('stop')) {
-      const stopKey = key.slice(4).toUpperCase();
+      const stopKey = idOf(key.slice(4));
       if (stopKey) {
         // parseFloat: fractional STOP values (e.g. 30.8) are valid and must survive a reload
         data.stopDef.set(stopKey, parseFloat(value));

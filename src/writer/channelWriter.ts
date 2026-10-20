@@ -3,6 +3,7 @@
  * Converts note data into BMS channel strings
  */
 
+import { canonicalObjectId, isBase62Headers } from '../utils/objectId';
 import type {
   EditableBMSChart,
   EditableBMSNote,
@@ -519,8 +520,9 @@ function getNoteChannel(
   return channelMap.get(note.column) || null;
 }
 
-function toValue(key: string): string {
-  return key.toUpperCase().padStart(2, '0').slice(0, 2);
+/** Two-character object value; #BASE 62 IDs are case-sensitive and keep their case. */
+function toValue(key: string, base62 = false): string {
+  return canonicalObjectId(key, base62).padStart(2, '0').slice(0, 2);
 }
 
 /**
@@ -626,7 +628,7 @@ function evictEvent(event: NoteEvent, warnings: WriterWarnings): void {
   start.channel = '01';
   start.kind = 'note';
   start.partner = undefined;
-  start.value = toValue(start.keysound);
+  // start.value already holds the keysound value (written by writeNoteChannels)
   warnings.add('slot-collision-rerouted');
 }
 
@@ -699,6 +701,7 @@ export function writeNoteChannels(
   const resolution = options.resolution || 192;
   const lnMode = options.lnMode || 'channel';
   const lnObjValue = options.lnObjValue || '';
+  const base62 = options.base62 ?? false;
   const channelDataList: ChannelData[] = [];
   const table = new MeasureTable(timeSignatures);
 
@@ -734,11 +737,11 @@ export function writeNoteChannels(
       if (lnMode === 'lnobj' && lnObjValue) {
         // LNOBJ mode: write the LNOBJ marker at the end position on the playable channel
         endChannel = mapping.playable.get(note.column);
-        endValue = toValue(lnObjValue);
+        endValue = toValue(lnObjValue, base62);
       } else {
         // Channel mode: add the end event on the 5x/6x channel
         endChannel = mapping.longNote.get(note.column);
-        endValue = toValue(note.keysound);
+        endValue = toValue(note.keysound, base62);
       }
       if (endChannel) {
         endEvent = {
@@ -756,7 +759,7 @@ export function writeNoteChannels(
     const startEvent: NoteEvent = {
       ...pos,
       channel,
-      value: toValue(note.keysound),
+      value: toValue(note.keysound, base62),
       kind: endEvent ? 'lnStart' : 'note',
       keysound: note.keysound,
       landmine: note.noteType === 'landmine' && channel !== '01',
@@ -781,7 +784,7 @@ export function writeNoteChannels(
           ticksInMeasure: pos.ticksInMeasure,
           absTick: pos.absTick,
           channel: layerChannel,
-          value: toValue(layer.keysound),
+          value: toValue(layer.keysound, base62),
           kind: 'layer',
           keysound: layer.keysound,
           landmine: false,
@@ -867,13 +870,13 @@ class DefinitionKeys {
   private readonly valueIndex = new Map<number, string>();
   private nextCandidate = 1;
 
-  constructor(defs: Map<string, number> | undefined) {
+  constructor(defs: Map<string, number> | undefined, private readonly base62 = false) {
     this.defs = defs ?? new Map();
     for (const [key, value] of this.defs) this.index(key, value);
   }
 
   private index(key: string, value: number): void {
-    const upper = key.toUpperCase();
+    const upper = canonicalObjectId(key, this.base62);
     if (!this.keyIndex.has(upper)) this.keyIndex.set(upper, key);
     if (!this.valueIndex.has(value)) this.valueIndex.set(value, upper);
   }
@@ -881,7 +884,7 @@ class DefinitionKeys {
   /** True when the event's own key still defines exactly `value` */
   ownKeyMatches(ownKey: string | undefined, value: number): boolean {
     if (!ownKey) return false;
-    const stored = this.keyIndex.get(ownKey.toUpperCase());
+    const stored = this.keyIndex.get(canonicalObjectId(ownKey, this.base62));
     return stored !== undefined && sameDefValue(this.defs.get(stored), value);
   }
 
@@ -939,8 +942,9 @@ export function resolveTimingDefinitions(
   chart: Pick<EditableBMSChart, 'headers' | 'bpmChanges' | 'stopEvents'>,
   warnings: WriterWarnings = new WriterWarnings()
 ): ResolvedTimingDefinitions {
-  const bpmKeys = new DefinitionKeys(chart.headers.bpmDef);
-  const stopKeys = new DefinitionKeys(chart.headers.stopDef);
+  const base62 = isBase62Headers(chart.headers);
+  const bpmKeys = new DefinitionKeys(chart.headers.bpmDef, base62);
+  const stopKeys = new DefinitionKeys(chart.headers.stopDef, base62);
 
   const bpmChanges: BMSBpmChange[] = [];
   for (const change of chart.bpmChanges) {
@@ -1010,7 +1014,7 @@ export function writeBpmChannels(
       }
       measureMap08.get(bpmChange.measure)!.push({
         fraction: quantizedFraction,
-        value: bpmChange.bpmDefKey.toUpperCase().padStart(2, '0'),
+        value: toValue(bpmChange.bpmDefKey, options.base62),
       });
     } else {
       // Direct BPM (channel 03) - integers only, range 1-255.
@@ -1069,7 +1073,7 @@ export function writeStopChannels(
     // Channel 09 references #STOPxx keys (BMSWriter.write assigns one to every STOP);
     // the raw-value fallback is only reached when this function is called directly.
     const value = stopEvent.stopDefKey
-      ? stopEvent.stopDefKey.toUpperCase().padStart(2, '0')
+      ? toValue(stopEvent.stopDefKey, options.base62)
       : Math.min(255, Math.max(1, Math.round(stopEvent.duration))).toString(16).toUpperCase().padStart(2, '0');
 
     measureMap.get(stopEvent.measure)!.push({
@@ -1113,7 +1117,7 @@ export function writeBgaChannels(
     }
     layerMap.get(bgaEvent.layer)!.push({
       fraction: quantizedFraction,
-      value: bgaEvent.bmpKey.toUpperCase().padStart(2, '0'),
+      value: toValue(bgaEvent.bmpKey, options.base62),
     });
   }
 
