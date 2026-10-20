@@ -232,7 +232,8 @@ export function parseHeadersToData(
     if (lowerKey.startsWith('stop')) {
       const stopKey = key.slice(4).toUpperCase();
       if (stopKey) {
-        data.stopDef.set(stopKey, parseInt(value, 10));
+        // parseFloat: fractional STOP values (e.g. 30.8) are valid and must survive a reload
+        data.stopDef.set(stopKey, parseFloat(value));
       }
       return;
     }

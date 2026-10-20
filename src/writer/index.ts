@@ -49,11 +49,16 @@ import type {
   BMSStopEvent,
   BMSBgaEvent,
   ReverseChannelMapping,
-  EditableChartStyle
+  EditableChartStyle,
+  BMSWriterWarning,
+  BMSWriterWarningCode,
 } from './types';
 import { writeHeaders, createEmptyHeaders, parseHeadersToData } from './headerWriter';
 import {
   writeChannels,
+  resolveTimingDefinitions,
+  isLongNote,
+  WriterWarnings,
   IIDX_SP_REVERSE,
   IIDX_DP_REVERSE,
 } from './channelWriter';
@@ -71,11 +76,13 @@ export type {
   BMSStopEvent,
   BMSBgaEvent,
   ReverseChannelMapping,
+  BMSWriterWarning,
+  BMSWriterWarningCode,
 };
 
 // Function re-exports
 export { writeHeaders, createEmptyHeaders, parseHeadersToData };
-export { writeChannels, IIDX_SP_REVERSE, IIDX_DP_REVERSE };
+export { writeChannels, resolveTimingDefinitions, IIDX_SP_REVERSE, IIDX_DP_REVERSE };
 
 /**
  * BMS Writer class
@@ -114,6 +121,12 @@ export function resolveReverseMapping(chart: EditableBMSChart): ReverseChannelMa
 
 export class BMSWriter {
   private options: BMSWriterOptions;
+  /**
+   * Adjustments made by the last write() (e.g. objects rerouted to the BGM channel
+   * because they shared a slot, long-note ends shortened, out-of-range objects skipped).
+   * Empty when the chart could be written exactly as given.
+   */
+  lastWarnings: BMSWriterWarning[] = [];
 
   constructor(options: BMSWriterOptions = {}) {
     this.options = {
@@ -138,8 +151,14 @@ export class BMSWriter {
     // PMS 9-key channels 22-25 as 18/19.
     mapping = mapping ?? resolveReverseMapping(chart);
 
+    const warnings = new WriterWarnings();
+
+    // Give every BPM / STOP event a valid channel and definition key (works on
+    // copies; new #BPMxx / #STOPxx definitions are added to the written header only).
+    const timing = resolveTimingDefinitions(chart, warnings);
+
     // LNOBJ mode: set the lnobj value in the headers, remove lntype
-    const headers = { ...chart.headers };
+    const headers = { ...chart.headers, bpmDef: timing.bpmDef, stopDef: timing.stopDef };
     const lnMode = this.options.lnMode || 'channel';
     if (lnMode === 'lnobj') {
       let lnObjValue = this.options.lnObjValue || headers.lnobj || '';
@@ -171,7 +190,7 @@ export class BMSWriter {
       }
     } else {
       // Channel mode: remove lnobj, keep lntype (if present)
-      if (!headers.lntype && chart.notes.some(n => n.endBeat !== undefined)) {
+      if (!headers.lntype && chart.notes.some(isLongNote)) {
         headers.lntype = 1;
       }
     }
@@ -180,10 +199,22 @@ export class BMSWriter {
     lines.push(...writeHeaders(headers, this.options));
 
     // Write channel data
-    lines.push(...writeChannels(chart, mapping, this.options));
+    const chartToWrite: EditableBMSChart = {
+      ...chart,
+      headers,
+      bpmChanges: timing.bpmChanges,
+      stopEvents: timing.stopEvents,
+    };
+    lines.push(...writeChannels(chartToWrite, mapping, this.options, warnings));
+    this.lastWarnings = warnings.toList();
 
     // Join with line breaks
     return lines.join('\r\n');
+  }
+
+  /** Warnings of the last write() (see lastWarnings) */
+  getWarnings(): BMSWriterWarning[] {
+    return this.lastWarnings;
   }
 
   /**

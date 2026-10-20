@@ -170,6 +170,33 @@ export interface BMSBgaEvent {
 }
 
 /**
+ * Kinds of data adjustments the writer had to make to produce a valid file.
+ * - `slot-collision-rerouted`: an object shared a slot with another object on the
+ *   same (non-BGM) channel; its keysound was written on the BGM channel 01 instead.
+ * - `slot-collision-dropped`: an object shared a slot and could not be kept
+ *   (landmines carry damage, not a keysound, so they are not moved to BGM).
+ * - `ln-end-shortened`: a long-note end coincided with another note's start in the
+ *   same lane; the end was moved back by 1/192 of a measure.
+ * - `out-of-range`: an object lies outside measures 000-999 and was skipped.
+ * - `definition-keys-exhausted`: no free `#BPMxx` / `#STOPxx` key was left.
+ * - `invalid-value`: a BPM / STOP value that is not a finite number was skipped.
+ */
+export type BMSWriterWarningCode =
+  | 'slot-collision-rerouted'
+  | 'slot-collision-dropped'
+  | 'ln-end-shortened'
+  | 'out-of-range'
+  | 'definition-keys-exhausted'
+  | 'invalid-value';
+
+/** Aggregated writer warning (one entry per code, with the number of affected objects). */
+export interface BMSWriterWarning {
+  code: BMSWriterWarningCode;
+  count: number;
+  message: string;
+}
+
+/**
  * Channel data (for output)
  */
 export interface ChannelData {

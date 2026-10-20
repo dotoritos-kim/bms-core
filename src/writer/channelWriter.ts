@@ -12,35 +12,140 @@ import type {
   ChannelData,
   ReverseChannelMapping,
   BMSWriterOptions,
+  BMSWriterWarning,
+  BMSWriterWarningCode,
 } from './types';
 import type { NoteType } from '../parser';
 
-/**
- * Converts a beat into a measure and fraction (taking time signatures into account)
- */
-function beatToMeasureFraction(
-  beat: number,
-  timeSignatures: Map<number, number>
-): { measure: number; fraction: number } {
-  let currentBeat = 0;
-  let measure = 0;
+/** 1 beat = 960 ticks (MIDI standard) */
+const TICKS_PER_BEAT = 960;
 
-  for (;;) {
-    const size = timeSignatures.get(measure) ?? 1.0;
-    const beatsInMeasure = 4 * size;
+/** Highest measure number a BMS channel line can address (#000xx .. #999xx) */
+const MAX_MEASURE = 999;
 
-    if (currentBeat + beatsInMeasure > beat + 1e-9) {
-      const fraction = (beat - currentBeat) / beatsInMeasure;
-      return { measure, fraction: Math.max(0, Math.min(fraction, 1 - 1e-9)) };
-    }
+// ──────────────────────────────────────────────────────────────────────────────
+// Warnings
+// ──────────────────────────────────────────────────────────────────────────────
 
-    currentBeat += beatsInMeasure;
-    measure++;
-    if (measure > 10000) break;
+const WARNING_MESSAGES: Record<BMSWriterWarningCode, (n: number) => string> = {
+  'slot-collision-rerouted': (n) =>
+    `${n} object(s) shared a slot with another object on the same channel; their keysounds were written on the BGM channel (01) instead`,
+  'slot-collision-dropped': (n) =>
+    `${n} object(s) shared a slot with another object on the same channel and could not be kept`,
+  'ln-end-shortened': (n) =>
+    `${n} long-note end(s) coincided with another note in the same lane and were shortened by 1/192 measure`,
+  'out-of-range': (n) => `${n} object(s) outside measures 000-${MAX_MEASURE} were skipped`,
+  'definition-keys-exhausted': (n) =>
+    `${n} BPM/STOP value(s) could not get a #BPMxx/#STOPxx definition key (all keys in use)`,
+  'invalid-value': (n) => `${n} BPM/STOP event(s) with a non-numeric value were skipped`,
+};
+
+/** Collects writer warnings, aggregated per code. */
+export class WriterWarnings {
+  private readonly counts = new Map<BMSWriterWarningCode, number>();
+
+  add(code: BMSWriterWarningCode, count = 1): void {
+    if (count <= 0) return;
+    this.counts.set(code, (this.counts.get(code) ?? 0) + count);
   }
 
-  return { measure, fraction: 0 };
+  toList(): BMSWriterWarning[] {
+    return [...this.counts].map(([code, count]) => ({
+      code,
+      count,
+      message: WARNING_MESSAGES[code](count),
+    }));
+  }
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Measure table (cumulative measure starts, computed once per write)
+// ──────────────────────────────────────────────────────────────────────────────
+
+interface TickPosition {
+  measure: number;
+  fraction: number;
+  tickOffset: number;
+  ticksInMeasure: number;
+}
+
+/**
+ * Cumulative measure-start positions for measures 000-999, in ticks and in beats.
+ * Lookups are binary searches, so locating N notes costs O(N log M) instead of
+ * O(N x M).
+ */
+class MeasureTable {
+  /** starts[m] = first tick of measure m; starts[MAX_MEASURE + 1] = end of measure 999 */
+  private readonly starts: number[];
+  private readonly beatStarts: number[];
+
+  constructor(timeSignatures: Map<number, number>) {
+    this.starts = new Array(MAX_MEASURE + 2);
+    this.beatStarts = new Array(MAX_MEASURE + 2);
+    this.starts[0] = 0;
+    this.beatStarts[0] = 0;
+    for (let m = 0; m <= MAX_MEASURE; m++) {
+      const size = timeSignatures.get(m) ?? 1.0;
+      const beats = 4 * size;
+      const ticks = Math.round(beats * TICKS_PER_BEAT);
+      this.starts[m + 1] = this.starts[m] + (Number.isFinite(ticks) && ticks > 0 ? ticks : 0);
+      this.beatStarts[m + 1] = this.beatStarts[m] + (Number.isFinite(beats) && beats > 0 ? beats : 0);
+    }
+  }
+
+  measureStart(measure: number): number {
+    return this.starts[measure];
+  }
+
+  ticksIn(measure: number): number {
+    return this.starts[measure + 1] - this.starts[measure];
+  }
+
+  /** Largest m (0..MAX_MEASURE) with arr[m] <= x */
+  private static search(arr: number[], x: number): number {
+    let lo = 0;
+    let hi = MAX_MEASURE;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (arr[mid] <= x) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo;
+  }
+
+  /** Tick-based position (no floating point error); null when outside measures 000-999 */
+  locateTick(tick: number): TickPosition | null {
+    if (!Number.isFinite(tick) || tick < 0 || tick >= this.starts[MAX_MEASURE + 1]) return null;
+    const measure = MeasureTable.search(this.starts, tick);
+    const ticksInMeasure = this.ticksIn(measure);
+    const tickOffset = tick - this.starts[measure];
+    return { measure, fraction: tickOffset / ticksInMeasure, tickOffset, ticksInMeasure };
+  }
+
+  /** Beat-based position (legacy notes without ticks); null when outside measures 000-999 */
+  locateBeat(beat: number): { measure: number; fraction: number } | null {
+    if (!Number.isFinite(beat) || beat < 0) return null;
+    const x = beat + 1e-9;
+    if (x >= this.beatStarts[MAX_MEASURE + 1]) return null;
+    const measure = MeasureTable.search(this.beatStarts, x);
+    const beatsInMeasure = this.beatStarts[measure + 1] - this.beatStarts[measure];
+    const fraction = (beat - this.beatStarts[measure]) / beatsInMeasure;
+    return { measure, fraction: Math.max(0, Math.min(fraction, 1 - 1e-9)) };
+  }
+}
+
+function isMeasureInRange(measure: number): boolean {
+  return Number.isInteger(measure) && measure >= 0 && measure <= MAX_MEASURE;
+}
+
+/** A note is a long note only when it is playable and carries end data. */
+export function isLongNote(note: EditableBMSNote): boolean {
+  return (
+    (note.noteType === undefined || note.noteType === 'playable') &&
+    (note.endBeat !== undefined || note.endTick !== undefined)
+  );
+}
+
 
 /**
  * IIDX SP reverse mapping (column -> channel)
@@ -146,6 +251,7 @@ export const IIDX_DP_REVERSE: ReverseChannelMapping = {
   ]),
 };
 
+
 /**
  * Computes the greatest common divisor
  */
@@ -158,49 +264,6 @@ function gcd(a: number, b: number): number {
  */
 function quantizeFraction(fraction: number, resolution: number): number {
   return Math.round(fraction * resolution) / resolution;
-}
-
-/** 1 beat = 960 ticks (MIDI standard) */
-const TICKS_PER_BEAT = 960;
-
-/**
- * Total tick count from measure 0 up to (but not including) targetMeasure
- * (needed for the inverse calculation of tickToFractionInMeasure)
- */
-function getTotalTicksUpToMeasure(
-  targetMeasure: number,
-  timeSignatures: Map<number, number>,
-): number {
-  let total = 0;
-  for (let m = 0; m < targetMeasure; m++) {
-    const size = timeSignatures.get(m) ?? 1.0;
-    total += Math.round(4 * size * TICKS_PER_BEAT);
-  }
-  return total;
-}
-
-/**
- * Tick-based fraction calculation (no floating point error)
- * For notes that have a tick, this function computes the fraction directly
- */
-function tickToFractionInMeasure(
-  tick: number,
-  timeSignatures: Map<number, number>
-): { measure: number; fraction: number; ticksInMeasure: number } {
-  let currentTick = 0;
-  let measure = 0;
-  for (;;) {
-    const size = timeSignatures.get(measure) ?? 1.0;
-    const ticksInMeasure = Math.round(4 * size * TICKS_PER_BEAT);
-    if (ticksInMeasure <= 0) return { measure, fraction: 0, ticksInMeasure: 1 }; // guard against zero-size measures
-    if (currentTick + ticksInMeasure > tick) {
-      const fraction = (tick - currentTick) / ticksInMeasure;
-      return { measure, fraction, ticksInMeasure };
-    }
-    currentTick += ticksInMeasure;
-    measure++;
-    if (measure > 9999) return { measure: 0, fraction: 0, ticksInMeasure: TICKS_PER_BEAT * 4 }; // safety
-  }
 }
 
 /**
@@ -223,13 +286,24 @@ function findMinResolution(fractions: number[], maxResolution: number = 192): nu
   return maxResolution / divisor;
 }
 
-/** Smallest denominator (<= max) that represents `f` exactly, or null. */
-function smallestDenominator(f: number, max = 9999): number | null {
-  for (let d = 1; d <= max; d++) {
+/** Memo for smallestDenominator (fractions repeat a lot within a chart). */
+const denominatorCache = new Map<number, number | null>();
+
+/** Smallest denominator (<= 9999) that represents `f` exactly, or null. */
+function smallestDenominator(f: number): number | null {
+  const cached = denominatorCache.get(f);
+  if (cached !== undefined) return cached;
+  let result: number | null = null;
+  for (let d = 1; d <= 9999; d++) {
     const n = f * d;
-    if (Math.abs(n - Math.round(n)) < 1e-7) return d;
+    if (Math.abs(n - Math.round(n)) < 1e-7) {
+      result = d;
+      break;
+    }
   }
-  return null;
+  if (denominatorCache.size > 50000) denominatorCache.clear();
+  denominatorCache.set(f, result);
+  return result;
 }
 
 /**
@@ -239,7 +313,7 @@ function smallestDenominator(f: number, max = 9999): number | null {
 function findExactResolution(fractions: number[], max = 9999): number | null {
   let res = 1;
   for (const f of fractions) {
-    const d = smallestDenominator(f, max);
+    const d = smallestDenominator(f);
     if (d === null) return null;
     res = (res * d) / gcd(res, d);
     if (res > max) return null;
@@ -248,63 +322,20 @@ function findExactResolution(fractions: number[], max = 9999): number | null {
 }
 
 /**
- * Computes the minimum resolution needed for BMS output from an array of ticks
- * e.g. 64th-note triplet (10 ticks) -> 3840/gcd(3840,10) = 3840/10 = 384
+ * Minimum line resolution that places every tick offset exactly, computed from the
+ * real length of the measure: resolution = ticksInMeasure / gcd(ticksInMeasure, ...offsets).
+ * e.g. 4/4 (3840 ticks), 64th-note triplet (10 ticks) -> 3840 / 10 = 384 slots;
+ *      3/4 (2880 ticks), triplets every 320 ticks -> 2880 / 320 = 9 slots.
  */
-function findMinResolutionFromTicks(
-  ticks: number[],
-  ticksInMeasure: number,
-  maxResolution: number = 3840,
-): number {
+function findMinResolutionFromTicks(ticks: number[], ticksInMeasure: number): number {
   if (ticks.length === 0) return 1;
-  const slots = ticks.map((t) => Math.round((t / ticksInMeasure) * maxResolution));
-  let divisor = maxResolution;
-  for (const s of slots) {
+  const total = Math.max(1, Math.round(ticksInMeasure));
+  let divisor = total;
+  for (const t of ticks) {
+    const s = Math.round(t);
     if (s > 0) divisor = gcd(divisor, s);
   }
-  return maxResolution / divisor;
-}
-
-/**
- * Gets the channel mapping for a note type
- */
-function getChannelMap(
-  noteType: NoteType | undefined,
-  hasEndBeat: boolean,
-  mapping: ReverseChannelMapping
-): Map<string, string> {
-  if (noteType === 'invisible') {
-    return mapping.invisible;
-  }
-  if (noteType === 'landmine') {
-    return mapping.landmine;
-  }
-  if (hasEndBeat) {
-    return mapping.longNote;
-  }
-  return mapping.playable;
-}
-
-/**
- * Determines the channel number of a note
- */
-function getNoteChannel(
-  note: EditableBMSNote,
-  mapping: ReverseChannelMapping,
-  lnMode: 'channel' | 'lnobj' = 'channel'
-): string | null {
-  // BGM notes
-  if (note.noteType === 'bgm' || !note.column) {
-    return '01';
-  }
-
-  // In LNOBJ mode, LNs also use playable channels (1x/2x instead of 5x/6x)
-  const usePlayableForLN = lnMode === 'lnobj' && !!note.endBeat;
-  const channelMap = usePlayableForLN
-    ? mapping.playable
-    : getChannelMap(note.noteType, !!note.endBeat, mapping);
-
-  return channelMap.get(note.column) || null;
+  return total / divisor;
 }
 
 /**
@@ -326,16 +357,13 @@ type ChannelEvent = {
 };
 
 /**
- * Creates channel data for a measure
+ * Line resolution of a measure/channel and the slot of every event in it.
+ * Shared by collision detection and line generation so both agree exactly.
  */
-function createChannelDataForMeasure(
-  measure: number,
-  channel: string,
+function layoutEvents(
   events: ChannelEvent[],
   resolution: number
-): ChannelData | null {
-  if (events.length === 0) return null;
-
+): { resolution: number; slots: number[] } {
   // Untouched measures: write back on the source file's own line resolution so
   // positions round-trip bit-exactly even when they are not on the tick grid.
   const sourceFractions = events.every((e) => e.sourceFraction !== undefined)
@@ -343,45 +371,52 @@ function createChannelDataForMeasure(
     : null;
   const exactRes = sourceFractions ? findExactResolution(sourceFractions) : null;
   if (exactRes !== null) {
-    const dataArray: string[] = new Array(exactRes).fill('00');
-    for (const event of events) {
-      const slot = Math.round(event.sourceFraction! * exactRes);
-      if (slot < exactRes) dataArray[slot] = event.value;
-    }
-    if (dataArray.every((v) => v === '00')) return null;
-    return { channel, measure, data: dataArray.join('') };
+    return {
+      resolution: exactRes,
+      slots: events.map((e) => Math.round(e.sourceFraction! * exactRes)),
+    };
   }
 
   // If all events have tick data, compute the tick-based minimum resolution (lossless)
-  const tickEvents = events.filter(
-    (e) => e.tickOffset !== undefined && e.ticksInMeasure !== undefined
+  const allTicks =
+    events.length > 0 &&
+    events.every((e) => e.tickOffset !== undefined && e.ticksInMeasure !== undefined) &&
+    events[0].ticksInMeasure! > 0;
+  const minRes = allTicks
+    ? findMinResolutionFromTicks(events.map((e) => e.tickOffset!), events[0].ticksInMeasure!)
+    : findMinResolution(events.map((e) => e.fraction), resolution); // legacy: fraction-based (max 192)
+
+  const slots = events.map((event) =>
+    event.tickOffset !== undefined && event.ticksInMeasure !== undefined && event.ticksInMeasure > 0
+      ? Math.round((event.tickOffset / event.ticksInMeasure) * minRes) // tick-based (exact)
+      : Math.round(event.fraction * minRes)
   );
-  let minRes: number;
-  if (tickEvents.length === events.length && tickEvents[0].ticksInMeasure! > 0) {
-    const ticks = tickEvents.map((e) => e.tickOffset!);
-    const ticksInMeasure = tickEvents[0].ticksInMeasure!;
-    minRes = findMinResolutionFromTicks(ticks, ticksInMeasure);
-  } else {
-    // Legacy path: fraction-based (max 192)
-    const fractions = events.map((e) => e.fraction);
-    minRes = findMinResolution(fractions, resolution);
-  }
+  return { resolution: minRes, slots };
+}
+
+/**
+ * Creates channel data for a measure
+ */
+function createChannelDataForMeasure(
+  measure: number,
+  channel: string,
+  events: ChannelEvent[],
+  resolution: number,
+  onCollision?: () => void
+): ChannelData | null {
+  if (events.length === 0) return null;
+
+  const layout = layoutEvents(events, resolution);
 
   // Create the data array (each slot is 2 characters)
-  const dataArray: string[] = new Array(minRes).fill('00');
-
-  for (const event of events) {
-    let slot: number;
-    if (event.tickOffset !== undefined && event.ticksInMeasure !== undefined && event.ticksInMeasure > 0) {
-      // Tick-based slot calculation (exact)
-      slot = Math.round((event.tickOffset / event.ticksInMeasure) * minRes);
-    } else {
-      slot = Math.round(event.fraction * minRes);
-    }
-    if (slot < minRes) {
+  const dataArray: string[] = new Array(layout.resolution).fill('00');
+  events.forEach((event, i) => {
+    const slot = layout.slots[i];
+    if (slot < layout.resolution) {
+      if (onCollision && dataArray[slot] !== '00' && event.value !== '00') onCollision();
       dataArray[slot] = event.value;
     }
-  }
+  });
 
   // Return null if every value is 00
   if (dataArray.every((v) => v === '00')) {
@@ -442,67 +477,292 @@ function splitOverlappingEvents(
 }
 
 /**
+ * Gets the channel mapping for a note type
+ */
+function getChannelMap(
+  noteType: NoteType | undefined,
+  hasEndBeat: boolean,
+  mapping: ReverseChannelMapping
+): Map<string, string> {
+  if (noteType === 'invisible') {
+    return mapping.invisible;
+  }
+  if (noteType === 'landmine') {
+    return mapping.landmine;
+  }
+  if (hasEndBeat) {
+    return mapping.longNote;
+  }
+  return mapping.playable;
+}
+
+/**
+ * Determines the channel number of a note
+ */
+function getNoteChannel(
+  note: EditableBMSNote,
+  mapping: ReverseChannelMapping,
+  lnMode: 'channel' | 'lnobj' = 'channel'
+): string | null {
+  // BGM notes
+  if (note.noteType === 'bgm' || !note.column) {
+    return '01';
+  }
+
+  // Only playable notes can be long notes; end data on invisible/landmine notes is ignored.
+  const isLN = isLongNote(note);
+  // In LNOBJ mode, LNs also use playable channels (1x/2x instead of 5x/6x)
+  const channelMap = lnMode === 'lnobj' && isLN
+    ? mapping.playable
+    : getChannelMap(note.noteType, isLN, mapping);
+
+  return channelMap.get(note.column) || null;
+}
+
+function toValue(key: string): string {
+  return key.toUpperCase().padStart(2, '0').slice(0, 2);
+}
+
+/**
+ * Note-channel event with the bookkeeping needed to resolve slot collisions.
+ */
+interface NoteEvent extends ChannelEvent {
+  measure: number;
+  channel: string;
+  /** note: a single object; layer: an additional keysound; lnStart/lnEnd: the two halves of a long note */
+  kind: 'note' | 'layer' | 'lnStart' | 'lnEnd';
+  /** Keysound to emit on the BGM channel if this object has to be rerouted */
+  keysound: string;
+  landmine: boolean;
+  /** Absolute tick (used to shorten long-note ends) */
+  absTick?: number;
+  /** The other half of a long note */
+  partner?: NoteEvent;
+  removed: boolean;
+}
+
+/** Position of a note start (or LN end) on the output grid; null = outside measures 000-999 */
+function locateNote(
+  tick: number | undefined,
+  measure: number | undefined,
+  fraction: number | undefined,
+  beat: number | undefined,
+  table: MeasureTable,
+  resolution: number
+): Omit<ChannelEvent, 'value'> & { measure: number; absTick: number } | null {
+  if (tick !== undefined) {
+    const pos = table.locateTick(tick);
+    if (!pos) return null;
+    // A note still sitting where the parser put it keeps its exact fraction.
+    const unmoved = measure === pos.measure
+      && typeof fraction === 'number'
+      && Math.abs(fraction - pos.fraction) < 1 / 3840;
+    return {
+      measure: pos.measure,
+      fraction: pos.fraction,
+      tickOffset: pos.tickOffset,
+      ticksInMeasure: pos.ticksInMeasure,
+      sourceFraction: unmoved ? fraction : undefined,
+      absTick: tick,
+    };
+  }
+  // Legacy path (no tick data)
+  let m: number;
+  let f: number;
+  if (measure !== undefined && fraction !== undefined) {
+    m = measure;
+    f = fraction;
+  } else if (beat !== undefined) {
+    const pos = table.locateBeat(beat);
+    if (!pos) return null;
+    m = pos.measure;
+    f = pos.fraction;
+  } else {
+    return null;
+  }
+  if (!isMeasureInRange(m)) return null;
+  return {
+    measure: m,
+    fraction: quantizeFraction(f, resolution),
+    absTick: table.measureStart(m) + Math.round(f * table.ticksIn(m)),
+  };
+}
+
+/**
+ * Moves a long-note end back by 1/192 of its measure so it no longer shares a slot
+ * with the next note in the lane. Returns false when the LN is too short for that.
+ */
+function shortenLnEnd(end: NoteEvent, table: MeasureTable): boolean {
+  const start = end.partner;
+  if (!start || end.absTick === undefined || start.absTick === undefined) return false;
+  const step = Math.max(1, Math.round(table.ticksIn(end.measure) / 192));
+  const newTick = end.absTick - step;
+  if (newTick <= start.absTick) return false;
+  const pos = table.locateTick(newTick);
+  if (!pos) return false;
+  end.absTick = newTick;
+  end.measure = pos.measure;
+  end.fraction = pos.fraction;
+  end.tickOffset = pos.tickOffset;
+  end.ticksInMeasure = pos.ticksInMeasure;
+  end.sourceFraction = undefined;
+  return true;
+}
+
+/**
+ * Takes an object out of its (occupied) slot. Its keysound is kept on the BGM
+ * channel 01; a long note is rerouted as a whole (start keysound to BGM, end
+ * dropped) so the remaining long notes in the lane keep their start/end pairing.
+ */
+function evictEvent(event: NoteEvent, warnings: WriterWarnings): void {
+  const start = event.kind === 'lnEnd' && event.partner ? event.partner : event;
+  const end = start.kind === 'lnStart' ? start.partner : undefined;
+  if (end) end.removed = true;
+  if (start.landmine) {
+    start.removed = true;
+    warnings.add('slot-collision-dropped');
+    return;
+  }
+  start.channel = '01';
+  start.kind = 'note';
+  start.partner = undefined;
+  start.value = toValue(start.keysound);
+  warnings.add('slot-collision-rerouted');
+}
+
+/**
+ * Resolves objects sharing a slot on a non-BGM channel (a BMS slot holds one
+ * object, so the extra one used to be silently overwritten):
+ * - an LN end colliding with another note's start in the lane is shortened by 1/192 measure;
+ * - any other extra object is rerouted to the BGM channel (keysound kept).
+ * Nothing changes when there are no collisions.
+ */
+function resolveSlotCollisions(
+  events: NoteEvent[],
+  table: MeasureTable,
+  resolution: number,
+  warnings: WriterWarnings
+): void {
+  for (let iteration = 0; iteration < 64; iteration++) {
+    let changed = false;
+    const groups = new Map<string, NoteEvent[]>();
+    for (const e of events) {
+      if (e.removed || e.channel === '01') continue;
+      const key = `${e.measure}:${e.channel}`;
+      const group = groups.get(key);
+      if (group) group.push(e);
+      else groups.set(key, [e]);
+    }
+
+    for (const [key, group] of groups) {
+      const channel = key.slice(key.indexOf(':') + 1);
+      const layout = layoutEvents(group, resolution);
+      const holders = new Map<number, NoteEvent>();
+      const occupies = (e: NoteEvent) => !e.removed && e.channel === channel;
+      group.forEach((e, i) => {
+        if (!occupies(e) || e.value === '00') return;
+        const slot = layout.slots[i];
+        const holder = holders.get(slot);
+        if (!holder || !occupies(holder)) {
+          holders.set(slot, e);
+          return;
+        }
+        changed = true;
+        // LN end vs. another note's start in the same lane: shorten the end.
+        const lnEnd = e.kind === 'lnEnd' && holder.kind !== 'lnEnd'
+          ? e
+          : holder.kind === 'lnEnd' && e.kind !== 'lnEnd' && holder.partner !== e
+            ? holder
+            : null;
+        if (lnEnd && shortenLnEnd(lnEnd, table)) {
+          warnings.add('ln-end-shortened');
+          if (lnEnd === holder) holders.set(slot, e);
+          return;
+        }
+        evictEvent(e, warnings);
+      });
+    }
+    if (!changed) return;
+  }
+}
+
+/**
  * Converts notes into channel data
  */
 export function writeNoteChannels(
   notes: EditableBMSNote[],
   mapping: ReverseChannelMapping = IIDX_SP_REVERSE,
   options: BMSWriterOptions = {},
-  timeSignatures: Map<number, number> = new Map()
+  timeSignatures: Map<number, number> = new Map(),
+  warnings: WriterWarnings = new WriterWarnings()
 ): ChannelData[] {
   const resolution = options.resolution || 192;
   const lnMode = options.lnMode || 'channel';
   const lnObjValue = options.lnObjValue || '';
   const channelDataList: ChannelData[] = [];
+  const table = new MeasureTable(timeSignatures);
 
-  // Group notes by measure and channel
-  const measureChannelMap = new Map<number, Map<string, ChannelEvent[]>>();
+  // 1. Build every event (in note order — the order decides layering on channel 01)
+  const events: NoteEvent[] = [];
 
   for (const note of notes) {
     const channel = getNoteChannel(note, mapping, lnMode);
     if (!channel) continue;
 
     // Prefer tick-based position (no floating point error) when tick is available
-    const tickPos = note.tick !== undefined
-      ? tickToFractionInMeasure(note.tick, timeSignatures)
-      : null;
-    const noteMeasure = tickPos?.measure ?? note.measure;
-    const noteFraction = tickPos?.fraction ?? note.fraction;
-    // Legacy quantization (based on 192) when there is no tick data
-    const quantizedFraction = tickPos ? noteFraction : quantizeFraction(noteFraction, resolution);
-
-    // Additional tick-based event information
-    const tickOffset = tickPos
-      ? (note.tick! - getTotalTicksUpToMeasure(noteMeasure, timeSignatures))
-      : undefined;
-    const ticksInMeasureForNote = tickPos?.ticksInMeasure;
-
-    // Get/create the measure map
-    if (!measureChannelMap.has(noteMeasure)) {
-      measureChannelMap.set(noteMeasure, new Map());
+    const pos = locateNote(note.tick, note.measure, note.fraction, note.beat, table, resolution);
+    if (!pos) {
+      warnings.add('out-of-range');
+      continue;
     }
-    const channelMap = measureChannelMap.get(noteMeasure)!;
 
-    // Get/create the channel event array
-    if (!channelMap.has(channel)) {
-      channelMap.set(channel, []);
+    // Long-note end (playable notes only)
+    let endEvent: NoteEvent | undefined;
+    if (isLongNote(note) && note.column) {
+      // endMeasure/endFraction only feed the "unmoved" check of tick data; without
+      // an end tick the end is derived from endBeat (as before).
+      const end = note.endTick !== undefined
+        ? locateNote(note.endTick, note.endMeasure, note.endFraction, undefined, table, resolution)
+        : locateNote(undefined, undefined, undefined, note.endBeat, table, resolution);
+      if (!end) {
+        // Skip the whole long note: a lone start would flip every later LN in the lane.
+        warnings.add('out-of-range');
+        continue;
+      }
+      let endChannel: string | undefined;
+      let endValue: string;
+      if (lnMode === 'lnobj' && lnObjValue) {
+        // LNOBJ mode: write the LNOBJ marker at the end position on the playable channel
+        endChannel = mapping.playable.get(note.column);
+        endValue = toValue(lnObjValue);
+      } else {
+        // Channel mode: add the end event on the 5x/6x channel
+        endChannel = mapping.longNote.get(note.column);
+        endValue = toValue(note.keysound);
+      }
+      if (endChannel) {
+        endEvent = {
+          ...end,
+          channel: endChannel,
+          value: endValue,
+          kind: 'lnEnd',
+          keysound: note.keysound,
+          landmine: false,
+          removed: false,
+        };
+      }
     }
-    const events = channelMap.get(channel)!;
 
-    // A note still sitting where the parser put it keeps its exact fraction.
-    const unmoved = tickPos !== null
-      && note.measure === noteMeasure
-      && typeof note.fraction === 'number'
-      && Math.abs(note.fraction - tickPos.fraction) < 1 / 3840;
-
-    // Add the note
-    events.push({
-      fraction: quantizedFraction,
-      value: note.keysound.toUpperCase().padStart(2, '0').slice(0, 2),
-      tickOffset,
-      ticksInMeasure: ticksInMeasureForNote,
-      sourceFraction: unmoved ? note.fraction : undefined,
-    });
+    const startEvent: NoteEvent = {
+      ...pos,
+      channel,
+      value: toValue(note.keysound),
+      kind: endEvent ? 'lnStart' : 'note',
+      keysound: note.keysound,
+      landmine: note.noteType === 'landmine' && channel !== '01',
+      removed: false,
+    };
+    events.push(startEvent);
 
     // Emit multi-keysound layers (additionalKeysounds)
     if (note.additionalKeysounds && note.additionalKeysounds.length > 0) {
@@ -514,111 +774,64 @@ export function writeNoteChannels(
           layerChannel = mapping.invisible.get(note.column) || null;
         }
         if (!layerChannel) continue;
-
-        if (!measureChannelMap.has(noteMeasure)) {
-          measureChannelMap.set(noteMeasure, new Map());
-        }
-        const layerChannelMap = measureChannelMap.get(noteMeasure)!;
-        if (!layerChannelMap.has(layerChannel)) {
-          layerChannelMap.set(layerChannel, []);
-        }
-        layerChannelMap.get(layerChannel)!.push({
-          fraction: quantizedFraction,
-          value: layer.keysound.toUpperCase().padStart(2, '0').slice(0, 2),
-          tickOffset,
-          ticksInMeasure: ticksInMeasureForNote,
+        events.push({
+          measure: pos.measure,
+          fraction: pos.fraction,
+          tickOffset: pos.tickOffset,
+          ticksInMeasure: pos.ticksInMeasure,
+          absTick: pos.absTick,
+          channel: layerChannel,
+          value: toValue(layer.keysound),
+          kind: 'layer',
+          keysound: layer.keysound,
+          landmine: false,
+          removed: false,
         });
       }
     }
 
-    // Handle long note ends
-    if (note.endBeat !== undefined && note.noteType !== 'landmine') {
-      const endPos = note.endTick !== undefined
-        ? tickToFractionInMeasure(note.endTick, timeSignatures)
-        : beatToMeasureFraction(note.endBeat, timeSignatures);
-      const endMeasure = endPos.measure;
-      const endFraction = note.endTick !== undefined ? endPos.fraction : quantizeFraction(endPos.fraction, resolution);
-      const endTickOffset = note.endTick !== undefined
-        ? (note.endTick - getTotalTicksUpToMeasure(endMeasure, timeSignatures))
-        : undefined;
-      const endTicksInMeasure = note.endTick !== undefined ? (endPos as ReturnType<typeof tickToFractionInMeasure>).ticksInMeasure : undefined;
-      const endUnmoved = note.endTick !== undefined
-        && note.endMeasure === endMeasure
-        && typeof note.endFraction === 'number'
-        && Math.abs(note.endFraction - endPos.fraction) < 1 / 3840;
-      const endSourceFraction = endUnmoved ? note.endFraction : undefined;
-
-      if (lnMode === 'lnobj' && lnObjValue && note.column) {
-        // LNOBJ mode: write the LNOBJ marker at the end position on the playable channel
-        const playableChannel = mapping.playable.get(note.column);
-        if (playableChannel) {
-          if (!measureChannelMap.has(endMeasure)) {
-            measureChannelMap.set(endMeasure, new Map());
-          }
-          const endChMap = measureChannelMap.get(endMeasure)!;
-          if (!endChMap.has(playableChannel)) {
-            endChMap.set(playableChannel, []);
-          }
-          endChMap.get(playableChannel)!.push({
-            fraction: endFraction,
-            value: lnObjValue.toUpperCase().padStart(2, '0').slice(0, 2),
-            tickOffset: endTickOffset,
-            ticksInMeasure: endTicksInMeasure,
-            sourceFraction: endSourceFraction,
-          });
-        }
-      } else {
-        // Channel mode: add the end event on the 5x/6x channel
-        const lnChannelMap = getChannelMap(note.noteType, true, mapping);
-        const lnChannel = note.column ? lnChannelMap.get(note.column) : null;
-        if (lnChannel) {
-          if (!measureChannelMap.has(endMeasure)) {
-            measureChannelMap.set(endMeasure, new Map());
-          }
-          const endChMap = measureChannelMap.get(endMeasure)!;
-          if (!endChMap.has(lnChannel)) {
-            endChMap.set(lnChannel, []);
-          }
-          endChMap.get(lnChannel)!.push({
-            fraction: endFraction,
-            value: note.keysound.toUpperCase().padStart(2, '0').slice(0, 2),
-            tickOffset: endTickOffset,
-            ticksInMeasure: endTicksInMeasure,
-            sourceFraction: endSourceFraction,
-          });
-        }
-      }
+    if (endEvent) {
+      startEvent.partner = endEvent;
+      endEvent.partner = startEvent;
+      events.push(endEvent);
     }
   }
 
-  // Generate channel data
+  // 2. One object per slot on non-BGM channels
+  resolveSlotCollisions(events, table, resolution, warnings);
+
+  // 3. Group by measure and channel
+  const measureChannelMap = new Map<number, Map<string, ChannelEvent[]>>();
+  for (const e of events) {
+    if (e.removed) continue;
+    let channelMap = measureChannelMap.get(e.measure);
+    if (!channelMap) {
+      channelMap = new Map();
+      measureChannelMap.set(e.measure, channelMap);
+    }
+    let list = channelMap.get(e.channel);
+    if (!list) {
+      list = [];
+      channelMap.set(e.channel, list);
+    }
+    list.push(e);
+  }
+
+  // 4. Generate channel data
+  const onCollision = () => warnings.add('slot-collision-dropped');
   for (const [measure, channelMap] of measureChannelMap) {
-    for (const [channel, events] of channelMap) {
+    for (const [channel, channelEvents] of channelMap) {
       // On the BGM channel (01), multiple events can overlap in the same slot,
       // so they must be split into layers to produce multiple #xxx01: lines
       if (channel === '01') {
-        const layers = splitOverlappingEvents(events, resolution);
+        const layers = splitOverlappingEvents(channelEvents, resolution);
         for (const layerEvents of layers) {
-          const channelData = createChannelDataForMeasure(
-            measure,
-            channel,
-            layerEvents,
-            resolution
-          );
-          if (channelData) {
-            channelDataList.push(channelData);
-          }
+          const channelData = createChannelDataForMeasure(measure, channel, layerEvents, resolution);
+          if (channelData) channelDataList.push(channelData);
         }
       } else {
-        const channelData = createChannelDataForMeasure(
-          measure,
-          channel,
-          events,
-          resolution
-        );
-        if (channelData) {
-          channelDataList.push(channelData);
-        }
+        const channelData = createChannelDataForMeasure(measure, channel, channelEvents, resolution, onCollision);
+        if (channelData) channelDataList.push(channelData);
       }
     }
   }
@@ -632,12 +845,149 @@ export function writeNoteChannels(
   return channelDataList;
 }
 
+// ──────────────────────────────────────────────────────────────────────────────
+// BPM / STOP definition keys
+// ──────────────────────────────────────────────────────────────────────────────
+
+/** NaN-safe equality for definition values */
+function sameDefValue(a: number | undefined, b: number): boolean {
+  return a !== undefined && (a === b || Object.is(a, b));
+}
+
+/**
+ * Hands out `#BPMxx` / `#STOPxx` keys for a definition table. Works on a copy of
+ * the caller's map, which is only made when a new key actually has to be added.
+ */
+class DefinitionKeys {
+  private defs: Map<string, number>;
+  private copied = false;
+  /** upper-case key -> key as stored in defs */
+  private readonly keyIndex = new Map<string, string>();
+  /** value -> first key (in definition order) with that value */
+  private readonly valueIndex = new Map<number, string>();
+  private nextCandidate = 1;
+
+  constructor(defs: Map<string, number> | undefined) {
+    this.defs = defs ?? new Map();
+    for (const [key, value] of this.defs) this.index(key, value);
+  }
+
+  private index(key: string, value: number): void {
+    const upper = key.toUpperCase();
+    if (!this.keyIndex.has(upper)) this.keyIndex.set(upper, key);
+    if (!this.valueIndex.has(value)) this.valueIndex.set(value, upper);
+  }
+
+  /** True when the event's own key still defines exactly `value` */
+  ownKeyMatches(ownKey: string | undefined, value: number): boolean {
+    if (!ownKey) return false;
+    const stored = this.keyIndex.get(ownKey.toUpperCase());
+    return stored !== undefined && sameDefValue(this.defs.get(stored), value);
+  }
+
+  get map(): Map<string, number> {
+    return this.defs;
+  }
+
+  /**
+   * Key whose definition equals `value`: the event's own key if it still matches,
+   * otherwise any existing key with that exact value, otherwise a newly allocated
+   * one ('01'..'ZZ'). Null when every key is taken.
+   */
+  resolve(ownKey: string | undefined, value: number): string | null {
+    if (ownKey && this.ownKeyMatches(ownKey, value)) return ownKey;
+    const byValue = this.valueIndex.get(value);
+    if (byValue !== undefined) return byValue;
+
+    for (; this.nextCandidate <= 1295; this.nextCandidate++) {
+      const key = this.nextCandidate.toString(36).toUpperCase().padStart(2, '0');
+      if (this.keyIndex.has(key)) continue;
+      if (!this.copied) {
+        this.defs = new Map(this.defs);
+        this.copied = true;
+      }
+      this.defs.set(key, value);
+      this.index(key, value);
+      this.nextCandidate++;
+      return key;
+    }
+    return null;
+  }
+}
+
+/**
+ * BPM / STOP events resolved against the definition tables, plus the tables to
+ * write in the header (copies when keys had to be added; the chart is not mutated).
+ */
+export interface ResolvedTimingDefinitions {
+  bpmChanges: BMSBpmChange[];
+  stopEvents: BMSStopEvent[];
+  bpmDef: Map<string, number>;
+  stopDef: Map<string, number>;
+}
+
+/**
+ * Makes every BPM / STOP event writable without loss:
+ * - an integer BPM in 1..255 that is not extended goes to channel 03 (as before);
+ * - every other BPM goes to channel 08 with a `#BPMxx` key whose value equals the
+ *   event's BPM (an edited extended BPM no longer keeps a stale key);
+ * - every STOP goes through a `#STOPxx` key whose value equals its duration
+ *   (channel 09 references keys, it cannot carry a raw duration).
+ * Untouched events keep their own keys, so unedited charts are written unchanged.
+ */
+export function resolveTimingDefinitions(
+  chart: Pick<EditableBMSChart, 'headers' | 'bpmChanges' | 'stopEvents'>,
+  warnings: WriterWarnings = new WriterWarnings()
+): ResolvedTimingDefinitions {
+  const bpmKeys = new DefinitionKeys(chart.headers.bpmDef);
+  const stopKeys = new DefinitionKeys(chart.headers.stopDef);
+
+  const bpmChanges: BMSBpmChange[] = [];
+  for (const change of chart.bpmChanges) {
+    const direct = !change.extended
+      && Number.isInteger(change.bpm) && change.bpm >= 1 && change.bpm <= 255;
+    if (direct) {
+      bpmChanges.push({ ...change });
+      continue;
+    }
+    // A non-numeric value is only kept when it still comes from its own (unedited) definition.
+    if (!Number.isFinite(change.bpm) && !bpmKeys.ownKeyMatches(change.bpmDefKey, change.bpm)) {
+      warnings.add('invalid-value');
+      continue;
+    }
+    const key = bpmKeys.resolve(change.bpmDefKey, change.bpm);
+    if (key === null) {
+      warnings.add('definition-keys-exhausted');
+      bpmChanges.push({ ...change, extended: false, bpmDefKey: undefined });
+      continue;
+    }
+    bpmChanges.push({ ...change, extended: true, bpmDefKey: key });
+  }
+
+  const stopEvents: BMSStopEvent[] = [];
+  for (const stop of chart.stopEvents) {
+    if (!Number.isFinite(stop.duration) && !stopKeys.ownKeyMatches(stop.stopDefKey, stop.duration)) {
+      warnings.add('invalid-value');
+      continue;
+    }
+    const key = stopKeys.resolve(stop.stopDefKey, stop.duration);
+    if (key === null) {
+      warnings.add('definition-keys-exhausted');
+      continue;
+    }
+    stopEvents.push({ ...stop, stopDefKey: key });
+  }
+
+  return { bpmChanges, stopEvents, bpmDef: bpmKeys.map, stopDef: stopKeys.map };
+}
+
 /**
  * Converts BPM change events into channel data
  */
 export function writeBpmChannels(
   bpmChanges: BMSBpmChange[],
-  options: BMSWriterOptions = {}
+  options: BMSWriterOptions = {},
+  warnings: WriterWarnings = new WriterWarnings()
 ): ChannelData[] {
   const resolution = options.resolution || 192;
   const channelDataList: ChannelData[] = [];
@@ -647,6 +997,10 @@ export function writeBpmChannels(
   const measureMap08 = new Map<number, Array<{ fraction: number; value: string }>>();
 
   for (const bpmChange of bpmChanges) {
+    if (!isMeasureInRange(bpmChange.measure)) {
+      warnings.add('out-of-range');
+      continue;
+    }
     const quantizedFraction = quantizeFraction(bpmChange.fraction, resolution);
 
     if (bpmChange.extended && bpmChange.bpmDefKey) {
@@ -659,7 +1013,8 @@ export function writeBpmChannels(
         value: bpmChange.bpmDefKey.toUpperCase().padStart(2, '0'),
       });
     } else {
-      // Direct BPM (channel 03) - integers only, range 1-255
+      // Direct BPM (channel 03) - integers only, range 1-255.
+      // (BMSWriter.write routes every other value to channel 08 beforehand.)
       const bpmInt = Math.min(255, Math.max(1, Math.round(bpmChange.bpm)));
       if (!measureMap03.has(bpmChange.measure)) {
         measureMap03.set(bpmChange.measure, []);
@@ -691,7 +1046,8 @@ export function writeBpmChannels(
  */
 export function writeStopChannels(
   stopEvents: BMSStopEvent[],
-  options: BMSWriterOptions = {}
+  options: BMSWriterOptions = {},
+  warnings: WriterWarnings = new WriterWarnings()
 ): ChannelData[] {
   const resolution = options.resolution || 192;
   const channelDataList: ChannelData[] = [];
@@ -700,15 +1056,21 @@ export function writeStopChannels(
   const measureMap = new Map<number, Array<{ fraction: number; value: string }>>();
 
   for (const stopEvent of stopEvents) {
+    if (!isMeasureInRange(stopEvent.measure)) {
+      warnings.add('out-of-range');
+      continue;
+    }
     const quantizedFraction = quantizeFraction(stopEvent.fraction, resolution);
 
     if (!measureMap.has(stopEvent.measure)) {
       measureMap.set(stopEvent.measure, []);
     }
 
+    // Channel 09 references #STOPxx keys (BMSWriter.write assigns one to every STOP);
+    // the raw-value fallback is only reached when this function is called directly.
     const value = stopEvent.stopDefKey
       ? stopEvent.stopDefKey.toUpperCase().padStart(2, '0')
-      : Math.min(255, Math.max(1, stopEvent.duration)).toString(16).toUpperCase().padStart(2, '0');
+      : Math.min(255, Math.max(1, Math.round(stopEvent.duration))).toString(16).toUpperCase().padStart(2, '0');
 
     measureMap.get(stopEvent.measure)!.push({
       fraction: quantizedFraction,
@@ -798,12 +1160,17 @@ export function channelDataToString(channelData: ChannelData): string {
 }
 
 /**
- * Converts an array of channel data into an array of BMS strings
+ * Converts an array of channel data into an array of BMS strings.
+ *
+ * BPM / STOP events are written as given: `BMSWriter.write` first runs
+ * `resolveTimingDefinitions` so every event has a valid channel and key, and
+ * writes the resulting definition tables in the header.
  */
 export function writeChannels(
   chart: EditableBMSChart,
   mapping: ReverseChannelMapping = IIDX_SP_REVERSE,
-  options: BMSWriterOptions = {}
+  options: BMSWriterOptions = {},
+  warnings: WriterWarnings = new WriterWarnings()
 ): string[] {
   const lines: string[] = [];
 
@@ -821,16 +1188,18 @@ export function writeChannels(
   allChannelData.push(...writeTimeSignatureChannels(chart.timeSignatures, options));
 
   // BPM changes
-  allChannelData.push(...writeBpmChannels(chart.bpmChanges, options));
+  allChannelData.push(...writeBpmChannels(chart.bpmChanges, options, warnings));
 
   // STOP events
-  allChannelData.push(...writeStopChannels(chart.stopEvents, options));
+  allChannelData.push(...writeStopChannels(chart.stopEvents, options, warnings));
 
   // BGA events
-  allChannelData.push(...writeBgaChannels(chart.bgaEvents, options));
+  const bgaEvents = chart.bgaEvents.filter((e) => isMeasureInRange(e.measure));
+  warnings.add('out-of-range', chart.bgaEvents.length - bgaEvents.length);
+  allChannelData.push(...writeBgaChannels(bgaEvents, options));
 
   // Notes
-  allChannelData.push(...writeNoteChannels(chart.notes, mapping, options, chart.timeSignatures));
+  allChannelData.push(...writeNoteChannels(chart.notes, mapping, options, chart.timeSignatures, warnings));
 
   // Sort: measure number -> channel number
   allChannelData.sort((a, b) => {
