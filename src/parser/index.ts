@@ -57,8 +57,16 @@ export class BMSParser {
      * @returns the decoded BMS file contents as a string
      */
     async readBuffer(buffer: ArrayBuffer | Uint8Array): Promise<string> {
-        return await Reader.readAsync(buffer);
+        const { text, encoding, bom } = Reader.readWithEncoding(buffer);
+        this.encoding = encoding;
+        this.bom = bom;
+        return text;
     }
+
+    /** WHATWG label of the encoding the last `readBuffer` decoded with (e.g. 'shift-jis'). */
+    encoding: string | null = null;
+    /** Whether the last buffer read by `readBuffer` started with a byte order mark. */
+    bom = false;
 
     /**
      * Compiles a BMS source string into a BMSChart structure.

@@ -240,6 +240,7 @@ export function compile(text: string, options?: Partial<BMSCompileOptions>): Com
                 fraction: fraction,
                 value: value,
                 channel: channel,
+                size: 1 / items,
                 lineNumber: lineNumber,
             } as BMSObject);
         }

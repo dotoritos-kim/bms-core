@@ -77,4 +77,11 @@ export interface BMSObject {
 
     /** Raw value of the BMS object. */
     value: string;
+
+    /**
+     * Width (as a fraction of the measure) of one slot on the source line
+     * (`1 / slot count`). Set by the compiler; used to find where an
+     * `#LNTYPE 2` (MGQ) long note ends.
+     */
+    size?: number;
 }

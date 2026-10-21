@@ -20,7 +20,7 @@
  * The command part is case-insensitive, but the ID keeps its case: in
  * `#BASE 62` charts `#WAV0a` and `#WAV0A` are different keysounds.
  */
-const ID_HEADER = /^(wav|bmp|bpm|stop|volwav|exwav|exbmp|argb|text|song|exrank|bga|swbga|scroll|speed|seek)([0-9a-z]{2})$/i;
+const ID_HEADER = /^(wav|bmp|bpm|exbpm|stop|volwav|exwav|exbmp|argb|text|song|exrank|bga|swbga|scroll|speed|seek)([0-9a-z]{2})$/i;
 
 /** Storage key for a header name: lower-case command, ID case preserved. */
 export function headerKey(name: string): string {

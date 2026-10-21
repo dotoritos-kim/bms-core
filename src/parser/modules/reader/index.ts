@@ -197,6 +197,38 @@ export function read(buffer: ArrayBuffer | Uint8Array, options: ReaderOptions | 
     return text;
 }
 
+/**
+ * Like `read`, but also reports the encoding the text was decoded with and
+ * whether the file started with a byte order mark — so an editor can write
+ * the file back in the same encoding.
+ * @returns `encoding` as a WHATWG label (e.g. 'utf-8', 'shift-jis', 'euc-kr')
+ */
+export function readWithEncoding(
+    buffer: ArrayBuffer | Uint8Array,
+    options: ReaderOptions | null = null,
+): { text: string; encoding: string; bom: boolean } {
+    const uint8Array = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+    const bom = detectBOM(uint8Array) !== null;
+    if (options?.forceEncoding) {
+        const decoder = new TextDecoder(options.forceEncoding);
+        const text = decoder.decode(uint8Array);
+        return {
+            text: text.charCodeAt(0) === 0xfeff ? text.substring(1) : text,
+            encoding: decoder.encoding,
+            bom,
+        };
+    }
+    const { text, encoding } = decodeWithAutoDetect(uint8Array);
+    // Report the canonical WHATWG name ('shift-jis' -> 'shift_jis').
+    let canonical = encoding;
+    try {
+        canonical = new TextDecoder(encoding).encoding;
+    } catch {
+        // keep the label as is
+    }
+    return { text, encoding: canonical, bom };
+}
+
 export function readAsync(
     buffer: ArrayBuffer | Uint8Array,
     options: ReaderOptions | null

@@ -33,8 +33,12 @@ export type {
     SpacingSegment,
 } from './parser';
 
+// Text encoding (write a chart back in the encoding it was read with)
+export { encodeText, canonicalEncoding, isWritableEncoding } from './utils/encoding';
+export type { EncodedText } from './utils/encoding';
+
 // Spec defaults / constants
-export { DEFAULT_BPM } from './parser/modules/timing';
+export { DEFAULT_BPM, extendedBpmHeader } from './parser/modules/timing';
 export { LANDMINE_INSTANT_GAMEOVER, calculateLandmineDamage } from './parser/modules/notes/channels';
 
 // Writer

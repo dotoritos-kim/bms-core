@@ -9,6 +9,19 @@ const precedence = { bpm: 1, stop: 2 };
 export const DEFAULT_BPM = 130;
 
 /**
+ * Raw definition referenced by a channel-08 (extended BPM) object.
+ * `#EXBPMxx n` is an alias of `#BPMxx n` (nanasi, pomu2, ... — introduced to
+ * dodge a BMSC bug); `#BPMxx` wins when both are defined.
+ * @returns the header value, or undefined when neither is defined
+ */
+export function extendedBpmHeader(
+    headers: { get(name: string): string | undefined },
+    id: string,
+): string | undefined {
+    return headers.get('bpm' + id) ?? headers.get('exbpm' + id);
+}
+
+/**
  * Timing represents the timing information of a chart.
  * A Timing object provides facilities to synchronize between metric time
  * (seconds) and musical time (beats).
@@ -175,7 +188,7 @@ export class Timing {
                 bpm = parseInt(object.value, 16);
                 actions.push({ type: 'bpm', beat: beat, bpm: bpm });
             } else if (object.channel === '08') {
-                bpm = +chart.headers.get('bpm' + object.value)!;
+                bpm = +extendedBpmHeader(chart.headers, object.value)!;
                 if (!isNaN(bpm)) actions.push({ type: 'bpm', beat: beat, bpm: bpm });
             } else if (object.channel === '09') {
                 const stopBeats = +chart.headers.get('stop' + object.value)! / 48;

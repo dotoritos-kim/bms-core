@@ -22,6 +22,7 @@ import { parseHeadersToData, createEmptyHeaders } from './headerWriter';
 import type { BMSChart } from '../parser/bms/chart';
 import type { BMSObject } from '../parser/bms/objects';
 import { detectStyle } from '../parser/strategies/styleStrategy';
+import { groupMgqLongNotes, isMgqLnType } from '../parser/modules/notes/mgq';
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Internal helpers
@@ -197,6 +198,10 @@ export class EditableChartBuilder {
     const activeLN: Record<string, EditableBMSNote> = {};
     const lastNote: Record<string, EditableBMSNote> = {};
     const lnObj = canon(chart.headers.get('lnobj') || '');
+    const mgq = isMgqLnType(chart.headers.get('lntype')) ? groupMgqLongNotes(objects) : null;
+    // The chart is written back with RDM-notation long notes (5x/6x pairs),
+    // which #LNTYPE 2 would misread: declare #LNTYPE 1 instead.
+    if (mgq) headers.lntype = 1;
 
     for (const obj of objects) {
       const channel = obj.channel.toUpperCase();
@@ -268,6 +273,23 @@ export class EditableChartBuilder {
       if (firstChar === '5' || firstChar === '6') {
         const normalized = normalizeChannel(channel);
         const beat = chart.measureToBeat(obj.measure, obj.fraction);
+        if (mgq) {
+          // #LNTYPE 2: the opening object becomes one long note; the objects
+          // that only extend it are folded in. Written back as RDM notation.
+          const ln = mgq.starts.get(obj);
+          if (!ln) continue;
+          const note = objectToNote(obj, noteIdCounter++, chart, channelMapping);
+          if (note) {
+            const endBeat = chart.measureToBeat(ln.endMeasure, ln.endFraction);
+            note.noteType = 'playable';
+            note.endBeat = endBeat;
+            note.endTick = Math.round(endBeat * 960);
+            note.endMeasure = ln.endMeasure;
+            note.endFraction = ln.endFraction;
+            notes.push(note);
+          }
+          continue;
+        }
         if (activeLN[normalized]) {
           activeLN[normalized].endBeat = beat;
           activeLN[normalized].endTick = Math.round(beat * 960);

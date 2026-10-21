@@ -5,6 +5,7 @@ import * as ChannelMapping from './channels';
 import { calculateLandmineDamage, detectBMSStyle, createCombinedMapping } from './channels';
 import { BMSChart } from '../../bms/chart';
 import { BMSObject } from '../../bms/objects';
+import { groupMgqLongNotes, isMgqLnType, type MgqLongNote } from './mgq';
 
 export type { BMSNote, NoteType };
 export { calculateLandmineDamage, detectBMSStyle };
@@ -94,7 +95,13 @@ class BMSNoteBuilder {
         this._lnObj = keysoundKey(this._chart.headers.get('lnobj') || '', this._base62);
         this._channelMapping = this._mapping;
         this._objects = this._chart.objects.allSorted();
+        if (isMgqLnType(this._chart.headers.get('lntype'))) {
+            this._mgq = groupMgqLongNotes(this._objects);
+        }
     }
+
+    /** `#LNTYPE 2`: long notes grouped by MGQ notation (null for RDM notation) */
+    _mgq: { starts: Map<BMSObject, MgqLongNote>; continuations: Set<BMSObject> } | null = null;
 
     build() {
         this._objects.forEach((object) => {
@@ -186,6 +193,24 @@ class BMSNoteBuilder {
     _handleLongNote(object: BMSObject) {
         const channel = this._normalizeChannel(object.channel);
         const beat = this._getBeat(object);
+        if (this._mgq) {
+            // MGQ notation: one object opens the LN, adjacent ones extend it.
+            const ln = this._mgq.starts.get(object);
+            if (!ln) return; // continuation of an open long note
+            this._notes.push({
+                beat: beat,
+                endBeat: this._chart.measureToBeat(ln.endMeasure, ln.endFraction),
+                keysound: object.value,
+                column: this._getColumn(channel),
+                noteType: 'playable',
+                channel: object.channel,
+                measure: object.measure,
+                fraction: object.fraction,
+                endMeasure: ln.endMeasure,
+                endFraction: ln.endFraction,
+            });
+            return;
+        }
         if (this._activeLN[channel]) {
             const note = this._activeLN[channel];
             note.endBeat = beat;

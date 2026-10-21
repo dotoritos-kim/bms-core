@@ -231,6 +231,17 @@ export function parseHeadersToData(
       return;
     }
 
+    // #EXBPMxx: alias of #BPMxx (#BPMxx wins when both exist). Folded into the
+    // BPM definitions so channel-08 events referencing it survive a save; they
+    // are written back as #BPMxx.
+    if (lowerKey.startsWith('exbpm') && lowerKey.length > 5) {
+      const bpmKey = idOf(key.slice(5));
+      if (bpmKey && headers.get('bpm' + key.slice(5)) === undefined) {
+        data.bpmDef.set(bpmKey, parseFloat(value));
+      }
+      return;
+    }
+
     // BPM definitions (extended BPM)
     if (lowerKey.startsWith('bpm') && lowerKey.length > 3) {
       const bpmKey = idOf(key.slice(3));
