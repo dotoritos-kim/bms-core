@@ -298,14 +298,15 @@ describe('writer: measure range and large charts (bug 6)', () => {
   });
 });
 
-describe('8K key mode', () => {
-  it('writes lanes 1-8 on keyboard channels 11-18 and reads them back', () => {
-    const lanes = ['1', '2', '3', '4', '5', '6', '7', '8'];
+describe('8K key mode (Qwilight #8K)', () => {
+  it('writes the 8 lanes on 16, 11-15, 18, 19 and reads them back', () => {
+    const lanes = ['SC', '1', '2', '3', '4', '5', '6', '7'];
     const notes = lanes.map((column, i) => note({ tick: i * 240, column }));
     const { written, chart, warnings } = reload(chartOf(notes, { style: styleForKeyMode('8K') }));
-    for (const ch of ['11', '12', '13', '14', '15', '16', '17', '18']) {
+    for (const ch of ['16', '11', '12', '13', '14', '15', '18', '19']) {
       expect(written).toMatch(new RegExp(`#000${ch}:`));
     }
+    expect(written).not.toMatch(/#00017:/);
     expect(warnings).toEqual([]);
     expect(chart.notes.filter((n) => n.noteType === 'playable').map((n) => n.column).sort())
       .toEqual([...lanes].sort());
@@ -315,6 +316,24 @@ describe('8K key mode', () => {
     const writer = new BMSWriter();
     writer.write(chartOf([note({ tick: 0, column: '8' })], { style: { id: 'iidx', isDP: false } }));
     expect(writer.getWarnings().map((w) => w.code)).toEqual(['unmapped-lane']);
+  });
+});
+
+describe('value-less extension commands', () => {
+  it('keeps #4K / #6K / #8K through a save', () => {
+    for (const cmd of ['4K', '6K', '8K']) {
+      const { written, chart } = reload(load(`#PLAYER 1\n#${cmd}\n#WAV01 a.wav\n#00111:01\n`));
+      expect(written.split(/\r?\n/)).toContain(`#${cmd}`);
+      expect(chart.headers.custom.has(cmd)).toBe(true);
+    }
+  });
+
+  it('BMSHeaders.has sees a value-less command that get() reports as undefined', () => {
+    const headers = parse('#PLAYER 1\n#6K\n').headers;
+    expect(headers.get('6K')).toBeUndefined();
+    expect(headers.has('6K')).toBe(true);
+    expect(headers.has('6k')).toBe(true);
+    expect(headers.has('4K')).toBe(false);
   });
 });
 

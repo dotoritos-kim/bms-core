@@ -119,9 +119,8 @@ export function writeHeaders(
     }
 
     for (const [key, value] of headers.custom) {
-      if (value) {
-        lines.push(`#${key.toUpperCase()} ${value}`);
-      }
+      // Value-less commands (e.g. Qwilight's #4K / #6K / #8K) are kept as-is
+      lines.push(value ? `#${key.toUpperCase()} ${value}` : `#${key.toUpperCase()}`);
     }
   }
 

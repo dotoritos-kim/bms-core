@@ -109,4 +109,13 @@ export class BMSHeaders {
     order(name: string): number {
         return this._order[headerKey(name)] ?? -1;
     }
+
+    /**
+     * Whether a header field is present, including value-less commands such
+     * as Qwilight's `#4K` / `#6K` / `#8K` (whose `get()` is undefined).
+     * @param name field name
+     */
+    has(name: string): boolean {
+        return this.order(name) >= 0;
+    }
 }

@@ -94,8 +94,6 @@ export { writeChannels, resolveTimingDefinitions, IIDX_SP_REVERSE, IIDX_DP_REVER
 export function styleForKeyMode(keyMode: string): EditableChartStyle {
   switch (keyMode) {
     case '9K': return { id: 'pms', isDP: false };
-    // 8K lanes are 1-8 with no scratch; the IIDX layout has no channel for lane 8.
-    case '8K': return { id: 'keyboard', isDP: false };
     case '10K': case '14K': return { id: 'iidx', isDP: true };
     case '12K': case '18K': case '24K': case '48K': return { id: 'keyboard', isDP: true };
     default: return { id: 'iidx', isDP: false };
