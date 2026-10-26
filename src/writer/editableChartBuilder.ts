@@ -17,11 +17,12 @@ import type {
   BMSStopEvent,
   BMSBgaEvent,
   BMSExtraObject,
+  EditableChartStyle,
 } from './types';
 import { parseHeadersToData, createEmptyHeaders } from './headerWriter';
 import type { BMSChart } from '../parser/bms/chart';
 import type { BMSObject } from '../parser/bms/objects';
-import { detectStyle } from '../parser/strategies/styleStrategy';
+import { detectStyle, STRATEGIES } from '../parser/strategies/styleStrategy';
 import { groupMgqLongNotes, isMgqLnType } from '../parser/modules/notes/mgq';
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -158,9 +159,15 @@ function groupMultiKeysounds(notes: EditableBMSNote[]): EditableBMSNote[] {
  */
 export class EditableChartBuilder {
   private readonly chart: BMSChart;
+  private readonly style?: EditableChartStyle;
 
-  constructor(chart: BMSChart) {
+  /**
+   * @param style channel layout to read the lanes with; auto-detected from
+   *   channel usage when omitted.
+   */
+  constructor(chart: BMSChart, style?: EditableChartStyle) {
     this.chart = chart;
+    this.style = style;
   }
 
   build(): EditableBMSChart {
@@ -186,10 +193,12 @@ export class EditableChartBuilder {
     const stopMap = new Map<string, number>();
     headers.stopDef.forEach((value, key) => stopMap.set(canon(key), value));
 
-    // Auto-detect channel mapping (using a Strategy)
+    // Channel mapping: the requested layout, else auto-detected (using a Strategy)
     const objects = chart.objects.allSorted();
     const playerHeader = chart.headers.get('player');
-    const { strategy, isDP } = detectStyle(objects, playerHeader);
+    const detected = detectStyle(objects, playerHeader);
+    const strategy = (this.style && STRATEGIES.find((st) => st.id === this.style!.id)) || detected.strategy;
+    const isDP = this.style ? this.style.isDP : detected.isDP;
     const channelMapping = strategy.buildMapping(isDP ? 'dp' : 'sp');
 
     let noteIdCounter = 0;

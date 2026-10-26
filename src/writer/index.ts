@@ -94,10 +94,22 @@ export { writeChannels, resolveTimingDefinitions, IIDX_SP_REVERSE, IIDX_DP_REVER
 export function styleForKeyMode(keyMode: string): EditableChartStyle {
   switch (keyMode) {
     case '9K': return { id: 'pms', isDP: false };
+    // 8K lanes are 1-8 with no scratch; the IIDX layout has no channel for lane 8.
+    case '8K': return { id: 'keyboard', isDP: false };
     case '10K': case '14K': return { id: 'iidx', isDP: true };
     case '12K': case '18K': case '24K': case '48K': return { id: 'keyboard', isDP: true };
     default: return { id: 'iidx', isDP: false };
   }
+}
+
+/**
+ * Channel → column mapping of a style (upper-case channels). Lets a caller
+ * re-read notes with the layout they were written in when the parser's style
+ * detection picked a different one.
+ */
+export function columnMappingForStyle(style: EditableChartStyle): Readonly<Record<string, string>> {
+  const strategy = STRATEGIES.find((st) => st.id === style.id) ?? STRATEGIES.find((st) => st.id === 'iidx')!;
+  return strategy.buildMapping(style.isDP ? 'dp' : 'sp');
 }
 
 /**
@@ -227,9 +239,10 @@ export class BMSWriter {
   /**
    * Creates an EditableBMSChart from a BMSChart object.
    * The internal logic is delegated to EditableChartBuilder.
+   * @param style channel layout to read the lanes with (auto-detected when omitted)
    */
-  static fromBMSChart(chart: BMSChart): EditableBMSChart {
-    return new EditableChartBuilder(chart).build();
+  static fromBMSChart(chart: BMSChart, style?: EditableChartStyle): EditableBMSChart {
+    return new EditableChartBuilder(chart, style).build();
   }
 
   /**

@@ -205,6 +205,7 @@ export interface BMSBgaEvent {
  * - `out-of-range`: an object lies outside measures 000-999 and was skipped.
  * - `definition-keys-exhausted`: no free `#BPMxx` / `#STOPxx` key was left.
  * - `invalid-value`: a BPM / STOP value that is not a finite number was skipped.
+ * - `unmapped-lane`: a note's lane has no channel in the chart's layout and was skipped.
  */
 export type BMSWriterWarningCode =
   | 'slot-collision-rerouted'
@@ -212,7 +213,8 @@ export type BMSWriterWarningCode =
   | 'ln-end-shortened'
   | 'out-of-range'
   | 'definition-keys-exhausted'
-  | 'invalid-value';
+  | 'invalid-value'
+  | 'unmapped-lane';
 
 /** Aggregated writer warning (one entry per code, with the number of affected objects). */
 export interface BMSWriterWarning {

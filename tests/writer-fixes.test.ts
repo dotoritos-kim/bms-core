@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { BMSParser, BMSWriter } from '../src';
+import { BMSParser, BMSWriter, styleForKeyMode, columnMappingForStyle } from '../src';
 import type { EditableBMSChart, EditableBMSNote, BMSHeaderData } from '../src/writer/types';
 
 function parse(text: string) {
@@ -295,5 +295,52 @@ describe('writer: measure range and large charts (bug 6)', () => {
     expect(back.notes.length).toBe(25000);
     expect(back.notes.map((n) => n.tick)).toEqual(notes.map((n) => n.tick));
     expect(elapsed).toBeLessThan(5000);
+  });
+});
+
+describe('8K key mode', () => {
+  it('writes lanes 1-8 on keyboard channels 11-18 and reads them back', () => {
+    const lanes = ['1', '2', '3', '4', '5', '6', '7', '8'];
+    const notes = lanes.map((column, i) => note({ tick: i * 240, column }));
+    const { written, chart, warnings } = reload(chartOf(notes, { style: styleForKeyMode('8K') }));
+    for (const ch of ['11', '12', '13', '14', '15', '16', '17', '18']) {
+      expect(written).toMatch(new RegExp(`#000${ch}:`));
+    }
+    expect(warnings).toEqual([]);
+    expect(chart.notes.filter((n) => n.noteType === 'playable').map((n) => n.column).sort())
+      .toEqual([...lanes].sort());
+  });
+
+  it('warns when a note lane has no channel instead of dropping it silently', () => {
+    const writer = new BMSWriter();
+    writer.write(chartOf([note({ tick: 0, column: '8' })], { style: { id: 'iidx', isDP: false } }));
+    expect(writer.getWarnings().map((w) => w.code)).toEqual(['unmapped-lane']);
+  });
+});
+
+describe('columnMappingForStyle', () => {
+  it('maps channels to the columns of the requested layout', () => {
+    expect(columnMappingForStyle({ id: 'keyboard', isDP: false })['16']).toBe('6');
+    expect(columnMappingForStyle({ id: 'iidx', isDP: false })['16']).toBe('SC');
+    expect(columnMappingForStyle({ id: 'iidx', isDP: false })['21']).toBeUndefined();
+    expect(columnMappingForStyle({ id: 'keyboard', isDP: true })['23']).toBe('12');
+  });
+});
+
+describe('fromBMSChart with a requested layout', () => {
+  // Keyboard 8K with lanes 6 and 7 empty: channel 18 alone reads as IIDX lane 6.
+  const text = '#PLAYER 1\n#WAV01 a.wav\n#00111:01\n#00118:0001\n#00158:01000100\n';
+
+  it('auto-detects IIDX when no layout is given', () => {
+    const chart = BMSWriter.fromBMSChart(parse(text));
+    expect(chart.style).toEqual({ id: 'iidx', isDP: false });
+    expect(chart.notes.map((n) => n.column).sort()).toEqual(['1', '6', '6']);
+  });
+
+  it('reads every lane object with the requested layout, LNs included', () => {
+    const chart = BMSWriter.fromBMSChart(parse(text), { id: 'keyboard', isDP: false });
+    expect(chart.style).toEqual({ id: 'keyboard', isDP: false });
+    expect(chart.notes.map((n) => n.column).sort()).toEqual(['1', '8', '8']);
+    expect(chart.extraObjects ?? []).toEqual([]);
   });
 });

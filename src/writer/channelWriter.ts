@@ -40,6 +40,7 @@ const WARNING_MESSAGES: Record<BMSWriterWarningCode, (n: number) => string> = {
   'definition-keys-exhausted': (n) =>
     `${n} BPM/STOP value(s) could not get a #BPMxx/#STOPxx definition key (all keys in use)`,
   'invalid-value': (n) => `${n} BPM/STOP event(s) with a non-numeric value were skipped`,
+  'unmapped-lane': (n) => `${n} note(s) in a lane with no channel in this layout were skipped`,
 };
 
 /** Collects writer warnings, aggregated per code. */
@@ -711,7 +712,10 @@ export function writeNoteChannels(
 
   for (const note of notes) {
     const channel = getNoteChannel(note, mapping, lnMode);
-    if (!channel) continue;
+    if (!channel) {
+      warnings.add('unmapped-lane');
+      continue;
+    }
 
     // Prefer tick-based position (no floating point error) when tick is available
     const pos = locateNote(note.tick, note.measure, note.fraction, note.beat, table, resolution);

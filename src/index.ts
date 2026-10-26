@@ -52,6 +52,7 @@ export {
     IIDX_DP_REVERSE,
     styleForKeyMode,
     resolveReverseMapping,
+    columnMappingForStyle,
 } from './writer';
 export type {
     BMSWriterOptions,
