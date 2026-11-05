@@ -150,6 +150,7 @@ class BMSNoteBuilder {
             noteType: 'bgm',
             channel: object.channel,
         };
+        if (object.bgmLine !== undefined) note.bgmLine = object.bgmLine;
         this._notes.push(note);
     }
 

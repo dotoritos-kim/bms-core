@@ -35,6 +35,12 @@ export interface BMSNote {
     channel?: string;
 
     /**
+     * BGM notes only: index of the source `#xxx01:` line within its measure
+     * (see BMSObject.bgmLine). Lets the editor keep BGM columns as written.
+     */
+    bgmLine?: number;
+
+    /**
      * Landmine note damage (0-100%)
      * Only valid for landmine-type notes
      */

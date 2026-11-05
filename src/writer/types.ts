@@ -148,6 +148,11 @@ export interface EditableBMSNote extends BMSNote {
   }>;
   /** BGM channel group number (editor only — for visual lane separation, no effect on BMS output) */
   bgmChannel?: number;
+  /**
+   * BGM notes read from a file: index of the `#xxx01:` line the note came from
+   * within its measure (editor only — lets the BGM lanes be laid out as written).
+   */
+  sourceBgmLine?: number;
 }
 
 /**

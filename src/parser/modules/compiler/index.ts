@@ -110,6 +110,8 @@ export function compile(text: string, options?: Partial<BMSCompileOptions>): Com
     const lineCount = lines.length;
     // #CASE labels of each #SWITCH, keyed by the #SWITCH line number
     const switchLabels = collectSwitchLabels(lines, matcher);
+    // Measure → number of `#xxx01:` lines seen so far (the next line's index)
+    const bgmLinesPerMeasure = new Map<number, number>();
 
     lines.forEach(function (text, index) {
         const lineNumber = index + 1;
@@ -231,6 +233,13 @@ export function compile(text: string, options?: Partial<BMSCompileOptions>): Com
     function handleChannelSentence(measure: number, channel: string, string: string, lineNumber: number) {
         const items = Math.floor(string.length / 2);
         if (items === 0) return;
+        // Editors keep one instrument per BGM column by writing column N as the
+        // Nth `#xxx01:` line of the measure; all-00 placeholder lines count too.
+        let bgmLine: number | undefined;
+        if (channel === '01') {
+            bgmLine = bgmLinesPerMeasure.get(measure) ?? 0;
+            bgmLinesPerMeasure.set(measure, bgmLine + 1);
+        }
         for (let i = 0; i < items; i++) {
             const value = string.substr(i * 2, 2);
             const fraction = i / items;
@@ -242,6 +251,7 @@ export function compile(text: string, options?: Partial<BMSCompileOptions>): Com
                 channel: channel,
                 size: 1 / items,
                 lineNumber: lineNumber,
+                ...(bgmLine !== undefined ? { bgmLine } : {}),
             } as BMSObject);
         }
     }

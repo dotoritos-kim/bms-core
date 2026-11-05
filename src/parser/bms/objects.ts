@@ -84,4 +84,12 @@ export interface BMSObject {
      * `#LNTYPE 2` (MGQ) long note ends.
      */
     size?: number;
+
+    /**
+     * BGM channel (01) only: 0-based index of the `#xxx01:` line this object
+     * came from among the BGM lines of its measure (the "B1, B2, …" column
+     * of editors such as BMSE / iBMSC). Undefined for other channels and for
+     * charts not parsed from BMS text.
+     */
+    bgmLine?: number;
 }
