@@ -40,6 +40,10 @@ TypeScript.
     `getWarnings()`.
   - Writes untouched measures on their source resolution; `#LNTYPE 2` charts
     are written back in `#LNTYPE 1` notation.
+  - Writes a BGM note's column (`EditableBMSNote.bgmChannel`) as the Nth
+    `#xxx01:` line of its measure, with `00` placeholder lines below it, so the
+    column is read back as `sourceBgmLine`. Notes without a column, and notes
+    whose slot on their line is taken, go to the first line with the slot free.
 - **Encoding write-back**: `encodeText(text, encoding, bom)` writes Shift_JIS,
   EUC-KR, GBK, Big5, Windows-1251 and UTF-8/16, falling back to UTF-8
   (`exact: false`) when a character does not fit.

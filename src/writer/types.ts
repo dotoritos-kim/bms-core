@@ -146,7 +146,12 @@ export interface EditableBMSNote extends BMSNote {
     /** Output channel type ('invisible' → 3x/4x channels, 'bgm' → channel 01) */
     type: 'invisible' | 'bgm';
   }>;
-  /** BGM channel group number (editor only — for visual lane separation, no effect on BMS output) */
+  /**
+   * BGM column of the note (0 = first). `BMSWriter` writes column N as the Nth
+   * `#xxx01:` line of the measure, so the column is read back as `sourceBgmLine`.
+   * Without it (or when the slot on that line is taken) the note goes to the
+   * first line with its slot free.
+   */
   bgmChannel?: number;
   /**
    * BGM notes read from a file: index of the `#xxx01:` line the note came from

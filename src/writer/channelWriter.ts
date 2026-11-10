@@ -357,7 +357,18 @@ type ChannelEvent = {
    * (e.g. 1000 slots) instead of the nearest 960-ticks-per-beat position.
    */
   sourceFraction?: number;
+  /**
+   * BGM channel (01) only: index of the `#xxx01:` line of the measure this
+   * object asks for (the note's BGM column). Undefined = any free line.
+   */
+  bgmLine?: number;
 };
+
+/**
+ * Highest BGM line index a note can ask for. A column above it is written on
+ * the first free line instead of padding the measure with placeholder lines.
+ */
+const MAX_BGM_LINE = 999;
 
 /**
  * Line resolution of a measure/channel and the slot of every event in it.
@@ -434,49 +445,53 @@ function createChannelDataForMeasure(
 }
 
 /**
- * Splits events that overlap in the same slot into multiple layers
- * Used so that keysounds playing simultaneously on the BGM channel (01)
- * are each written on a separate #xxx01: line
+ * Spreads the BGM channel (01) events of a measure over its `#xxx01:` lines.
+ *
+ * An event that asks for a line (`bgmLine`, the note's BGM column) is written
+ * on that line, so a chart keeps its columns when it is read back. Events
+ * without one, and events whose slot on their line is already taken, go to the
+ * first line with that slot free: keysounds playing at the same time each end
+ * up on their own line. Lines nobody uses stay undefined.
  */
-function splitOverlappingEvents(
+function layoutBgmLines(
   events: ChannelEvent[],
   resolution: number
-): Array<ChannelEvent[]> {
-  if (events.length === 0) return [];
+): Array<ChannelEvent[] | undefined> {
+  const lines: Array<ChannelEvent[] | undefined> = [];
+  const takenSlots: Array<Set<number> | undefined> = [];
 
-  // Group events by slot
-  const slotMap = new Map<number, ChannelEvent[]>();
-  for (const event of events) {
-    let slot: number;
+  const slotOf = (event: ChannelEvent): number => {
     if (event.tickOffset !== undefined && event.ticksInMeasure !== undefined && event.ticksInMeasure > 0) {
       // Tick-based temporary slot (for collision detection, based on max 3840)
-      slot = Math.round((event.tickOffset / event.ticksInMeasure) * 3840);
+      return Math.round((event.tickOffset / event.ticksInMeasure) * 3840);
+    }
+    return Math.round(quantizeFraction(event.fraction, resolution) * resolution);
+  };
+  const isFree = (line: number, slot: number): boolean => !takenSlots[line]?.has(slot);
+  const place = (line: number, slot: number, event: ChannelEvent): void => {
+    (lines[line] ??= []).push(event);
+    (takenSlots[line] ??= new Set()).add(slot);
+  };
+
+  // 1. Events on the line they ask for
+  const floating: Array<{ event: ChannelEvent; slot: number }> = [];
+  for (const event of events) {
+    const slot = slotOf(event);
+    if (event.bgmLine !== undefined && isFree(event.bgmLine, slot)) {
+      place(event.bgmLine, slot, event);
     } else {
-      slot = Math.round(quantizeFraction(event.fraction, resolution) * resolution);
-    }
-    if (!slotMap.has(slot)) {
-      slotMap.set(slot, []);
-    }
-    slotMap.get(slot)!.push(event);
-  }
-
-  // Return a single layer if there is no overlap
-  let maxOverlap = 0;
-  for (const group of slotMap.values()) {
-    if (group.length > maxOverlap) maxOverlap = group.length;
-  }
-  if (maxOverlap <= 1) return [events];
-
-  // Distribute across layers: place the nth event of each slot in the nth layer
-  const layers: Array<ChannelEvent[]> = [];
-  for (const group of slotMap.values()) {
-    for (let i = 0; i < group.length; i++) {
-      if (!layers[i]) layers[i] = [];
-      layers[i].push(group[i]);
+      floating.push({ event, slot });
     }
   }
 
-  return layers;
+  // 2. The rest on the first line with the slot free (in event order)
+  for (const { event, slot } of floating) {
+    let line = 0;
+    while (!isFree(line, slot)) line++;
+    place(line, slot, event);
+  }
+
+  return lines;
 }
 
 /**
@@ -707,7 +722,7 @@ export function writeNoteChannels(
   const channelDataList: ChannelData[] = [];
   const table = new MeasureTable(timeSignatures);
 
-  // 1. Build every event (in note order — the order decides layering on channel 01)
+  // 1. Build every event (in note order — the order decides which line a BGM object without a column gets)
   const events: NoteEvent[] = [];
 
   for (const note of notes) {
@@ -770,6 +785,16 @@ export function writeNoteChannels(
       landmine: note.noteType === 'landmine' && channel !== '01',
       removed: false,
     };
+    // A BGM note stays on the line of its column
+    if (
+      channel === '01' &&
+      note.bgmChannel !== undefined &&
+      Number.isInteger(note.bgmChannel) &&
+      note.bgmChannel >= 0 &&
+      note.bgmChannel <= MAX_BGM_LINE
+    ) {
+      startEvent.bgmLine = note.bgmChannel;
+    }
     events.push(startEvent);
 
     // Emit multi-keysound layers (additionalKeysounds)
@@ -830,12 +855,18 @@ export function writeNoteChannels(
   for (const [measure, channelMap] of measureChannelMap) {
     for (const [channel, channelEvents] of channelMap) {
       // On the BGM channel (01), multiple events can overlap in the same slot,
-      // so they must be split into layers to produce multiple #xxx01: lines
+      // so the measure is written as several #xxx01: lines
       if (channel === '01') {
-        const layers = splitOverlappingEvents(channelEvents, resolution);
-        for (const layerEvents of layers) {
-          const channelData = createChannelDataForMeasure(measure, channel, layerEvents, resolution);
-          if (channelData) channelDataList.push(channelData);
+        const lines = layoutBgmLines(channelEvents, resolution).map((lineEvents) =>
+          lineEvents ? createChannelDataForMeasure(measure, channel, lineEvents, resolution) : null
+        );
+        // Readers number the lines of a measure in file order: an unused line
+        // below a used one is written as a placeholder so the columns keep
+        // their index. Nothing is written after the last used line.
+        let last = lines.length - 1;
+        while (last >= 0 && !lines[last]) last--;
+        for (let i = 0; i <= last; i++) {
+          channelDataList.push(lines[i] ?? { channel, measure, data: '00' });
         }
       } else {
         const channelData = createChannelDataForMeasure(measure, channel, channelEvents, resolution, onCollision);

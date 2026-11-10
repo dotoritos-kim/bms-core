@@ -89,7 +89,7 @@ function objectToNote(
 }
 
 /**
- * Assigns sequential channel group numbers to BGM notes (editor only).
+ * Gives BGM notes sounding on the same tick consecutive columns (left-packed).
  */
 function assignBgmChannels(notes: EditableBMSNote[]): void {
   const tickGroups = new Map<number, EditableBMSNote[]>();
