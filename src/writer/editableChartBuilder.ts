@@ -84,6 +84,7 @@ function objectToNote(
     keysound: obj.value,
     noteType,
     channel: obj.channel,
+    ...(noteType === 'bgm' && obj.bgmLine !== undefined ? { sourceBgmLine: obj.bgmLine } : {}),
   };
 }
 

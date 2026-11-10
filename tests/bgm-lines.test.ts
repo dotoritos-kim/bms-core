@@ -1,7 +1,7 @@
 // BGM channel (01) objects remember which `#xxx01:` line of their measure they
 // came from, so editors can show the BGM columns (B1, B2, …) as written.
 import { describe, it, expect } from 'vitest';
-import { Compiler, BMSParser } from '../src';
+import { Compiler, BMSParser, BMSWriter } from '../src';
 
 const lines = (...l: string[]) => l.join('\n');
 
@@ -60,5 +60,14 @@ describe('BMSObject.bgmLine', () => {
         parser.compileString(lines('#WAV01 a.wav', '#WAV02 b.wav', '#00101:01', '#00101:0002'));
         const bgm = parser.getNotes()!.all().filter((n) => n.noteType === 'bgm');
         expect(bgm.map((n) => `${n.keysound}@${n.bgmLine}`).sort()).toEqual(['01@0', '02@1']);
+    });
+
+    it('is carried to the editable chart as sourceBgmLine', () => {
+        const parser = new BMSParser();
+        parser.compileString(lines('#WAV01 a.wav', '#WAV02 b.wav', '#00101:01', '#00101:00', '#00101:0002', '#00111:01'));
+        const notes = BMSWriter.fromBMSChart(parser.chart!).notes;
+        const bgm = notes.filter((n) => n.noteType === 'bgm');
+        expect(bgm.map((n) => `${n.keysound}@${n.sourceBgmLine}`).sort()).toEqual(['01@0', '02@2']);
+        expect(notes.find((n) => n.noteType === 'playable')!.sourceBgmLine).toBeUndefined();
     });
 });

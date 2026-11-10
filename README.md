@@ -26,7 +26,8 @@ TypeScript.
   - `#BPM` 130 when omitted; landmine damage `value / 2` % with `ZZ` as an
     instant game over
   - BGM notes keep the index of the `#xxx01:` line they came from
-    (`BMSNote.bgmLine`), so editors can lay BGM lanes out as written
+    (`BMSNote.bgmLine`, and `EditableBMSNote.sourceBgmLine` from
+    `BMSWriter.fromBMSChart`), so editors can lay BGM lanes out as written
 - **Writer** (`BMSWriter`): round-trip serialisation back to BMS text.
   - Picks the channel layout from the chart's `style` (IIDX / keyboard / PMS,
     SP or DP), or infers it from the columns in use (`resolveReverseMapping`).
