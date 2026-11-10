@@ -174,7 +174,7 @@ function expectEquivalent(name: string, chart1: NonNullable<BMSParser['chart']>,
 
 describe('Writer round-trip — real chart files', () => {
   for (const file of FILE_INPUTS) {
-    it(`round-trips ${file.split(/[\/]/).pop()}`, async () => {
+    it(`round-trips ${file.split(/[\\/]/).pop()}`, async () => {
       const buffer = readFileSync(file);
       const parser = new BMSParser();
       const source = await parser.readBuffer(buffer);
