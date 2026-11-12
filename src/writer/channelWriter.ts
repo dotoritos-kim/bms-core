@@ -90,10 +90,17 @@ class MeasureTable {
     for (let m = 0; m <= MAX_MEASURE; m++) {
       const size = timeSignatures.get(m) ?? 1.0;
       const beats = 4 * size;
-      const ticks = Math.round(beats * TICKS_PER_BEAT);
-      this.starts[m + 1] = this.starts[m] + (Number.isFinite(ticks) && ticks > 0 ? ticks : 0);
       this.beatStarts[m + 1] = this.beatStarts[m] + (Number.isFinite(beats) && beats > 0 ? beats : 0);
+      // Round the measure start, not the measure length: a note's tick is its
+      // beat rounded the same way, so the two stay in step even after many
+      // measures whose length is not a whole number of ticks (e.g. #xxx02:0.333).
+      this.starts[m + 1] = Math.round(this.beatStarts[m + 1] * TICKS_PER_BEAT);
     }
+  }
+
+  /** Beat at a measure/fraction position (no rounding) */
+  beatAt(measure: number, fraction: number): number {
+    return this.beatStarts[measure] + (this.beatStarts[measure + 1] - this.beatStarts[measure]) * fraction;
   }
 
   measureStart(measure: number): number {
@@ -378,16 +385,24 @@ function layoutEvents(
   events: ChannelEvent[],
   resolution: number
 ): { resolution: number; slots: number[] } {
-  // Untouched measures: write back on the source file's own line resolution so
-  // positions round-trip bit-exactly even when they are not on the tick grid.
-  const sourceFractions = events.every((e) => e.sourceFraction !== undefined)
-    ? events.map((e) => e.sourceFraction!)
+  // Exact positions: the source fraction of a note that kept it, the tick
+  // position of any other. The line gets the smallest resolution that holds
+  // all of them, so off-grid notes (septuplets, 1000-slot lines ...) stay put
+  // when a note is added or moved in the same measure.
+  const exactFractions = events.map((e) =>
+    e.sourceFraction !== undefined
+      ? e.sourceFraction
+      : e.tickOffset !== undefined && e.ticksInMeasure !== undefined && e.ticksInMeasure > 0
+        ? e.tickOffset / e.ticksInMeasure
+        : undefined
+  );
+  const exactRes = exactFractions.every((f) => f !== undefined)
+    ? findExactResolution(exactFractions as number[])
     : null;
-  const exactRes = sourceFractions ? findExactResolution(sourceFractions) : null;
   if (exactRes !== null) {
     return {
       resolution: exactRes,
-      slots: events.map((e) => Math.round(e.sourceFraction! * exactRes)),
+      slots: exactFractions.map((f) => Math.min(Math.round(f! * exactRes), exactRes - 1)),
     };
   }
 
@@ -398,12 +413,19 @@ function layoutEvents(
     events[0].ticksInMeasure! > 0;
   const minRes = allTicks
     ? findMinResolutionFromTicks(events.map((e) => e.tickOffset!), events[0].ticksInMeasure!)
-    : findMinResolution(events.map((e) => e.fraction), resolution); // legacy: fraction-based (max 192)
+    // Fraction-based: positions that no line of up to 9999 slots holds exactly
+    // (free placement) go to the nearest 1/3840 of the measure.
+    : findMinResolution(events.map((e) => e.fraction), Math.max(resolution, 3840));
 
+  // Clamped: a fraction just below 1 must not round onto the next barline
+  // (that slot does not exist on the line, the object would be lost).
   const slots = events.map((event) =>
-    event.tickOffset !== undefined && event.ticksInMeasure !== undefined && event.ticksInMeasure > 0
-      ? Math.round((event.tickOffset / event.ticksInMeasure) * minRes) // tick-based (exact)
-      : Math.round(event.fraction * minRes)
+    Math.min(
+      event.tickOffset !== undefined && event.ticksInMeasure !== undefined && event.ticksInMeasure > 0
+        ? Math.round((event.tickOffset / event.ticksInMeasure) * minRes) // tick-based (exact)
+        : Math.round(event.fraction * minRes),
+      minRes - 1
+    )
   );
   return { resolution: minRes, slots };
 }
@@ -572,10 +594,13 @@ function locateNote(
   if (tick !== undefined) {
     const pos = table.locateTick(tick);
     if (!pos) return null;
-    // A note still sitting where the parser put it keeps its exact fraction.
+    // A note whose measure/fraction still matches its tick (within the tick's
+    // rounding) keeps that exact fraction: positions off the 960-ticks-per-beat
+    // grid (septuplets, 1000-slot lines ...) are written back where they were.
     const unmoved = measure === pos.measure
       && typeof fraction === 'number'
-      && Math.abs(fraction - pos.fraction) < 1 / 3840;
+      && fraction >= 0 && fraction < 1
+      && Math.abs(table.beatAt(measure, fraction) * TICKS_PER_BEAT - tick) <= 0.5 + 1e-3;
     return {
       measure: pos.measure,
       fraction: pos.fraction,
@@ -1033,15 +1058,17 @@ export function writeBpmChannels(
   const channelDataList: ChannelData[] = [];
 
   // Group by measure (channel 03: direct BPM, channel 08: extended BPM)
-  const measureMap03 = new Map<number, Array<{ fraction: number; value: string }>>();
-  const measureMap08 = new Map<number, Array<{ fraction: number; value: string }>>();
+  const measureMap03 = new Map<number, ChannelEvent[]>();
+  const measureMap08 = new Map<number, ChannelEvent[]>();
 
   for (const bpmChange of bpmChanges) {
     if (!isMeasureInRange(bpmChange.measure)) {
       warnings.add('out-of-range');
       continue;
     }
-    const quantizedFraction = quantizeFraction(bpmChange.fraction, resolution);
+    // Exact position (line resolution is picked per measure): rounding a BPM
+    // change to 1/192 would shift every later note in time.
+    const fraction = bpmChange.fraction;
 
     if (bpmChange.extended && bpmChange.bpmDefKey) {
       // Extended BPM (channel 08)
@@ -1049,7 +1076,8 @@ export function writeBpmChannels(
         measureMap08.set(bpmChange.measure, []);
       }
       measureMap08.get(bpmChange.measure)!.push({
-        fraction: quantizedFraction,
+        fraction,
+        sourceFraction: fraction,
         value: toValue(bpmChange.bpmDefKey, options.base62),
       });
     } else {
@@ -1060,7 +1088,8 @@ export function writeBpmChannels(
         measureMap03.set(bpmChange.measure, []);
       }
       measureMap03.get(bpmChange.measure)!.push({
-        fraction: quantizedFraction,
+        fraction,
+        sourceFraction: fraction,
         value: bpmInt.toString(16).toUpperCase().padStart(2, '0'),
       });
     }
@@ -1093,14 +1122,15 @@ export function writeStopChannels(
   const channelDataList: ChannelData[] = [];
 
   // Group by measure
-  const measureMap = new Map<number, Array<{ fraction: number; value: string }>>();
+  const measureMap = new Map<number, ChannelEvent[]>();
 
   for (const stopEvent of stopEvents) {
     if (!isMeasureInRange(stopEvent.measure)) {
       warnings.add('out-of-range');
       continue;
     }
-    const quantizedFraction = quantizeFraction(stopEvent.fraction, resolution);
+    // Exact position: a STOP rounded to 1/192 shifts every later note in time.
+    const fraction = stopEvent.fraction;
 
     if (!measureMap.has(stopEvent.measure)) {
       measureMap.set(stopEvent.measure, []);
@@ -1113,7 +1143,8 @@ export function writeStopChannels(
       : Math.min(255, Math.max(1, Math.round(stopEvent.duration))).toString(16).toUpperCase().padStart(2, '0');
 
     measureMap.get(stopEvent.measure)!.push({
-      fraction: quantizedFraction,
+      fraction,
+      sourceFraction: fraction,
       value,
     });
   }
@@ -1138,10 +1169,10 @@ export function writeBgaChannels(
   const channelDataList: ChannelData[] = [];
 
   // Group by measure and layer
-  const measureLayerMap = new Map<number, Map<string, Array<{ fraction: number; value: string }>>>();
+  const measureLayerMap = new Map<number, Map<string, ChannelEvent[]>>();
 
   for (const bgaEvent of bgaEvents) {
-    const quantizedFraction = quantizeFraction(bgaEvent.fraction, resolution);
+    const fraction = bgaEvent.fraction;
 
     if (!measureLayerMap.has(bgaEvent.measure)) {
       measureLayerMap.set(bgaEvent.measure, new Map());
@@ -1152,7 +1183,8 @@ export function writeBgaChannels(
       layerMap.set(bgaEvent.layer, []);
     }
     layerMap.get(bgaEvent.layer)!.push({
-      fraction: quantizedFraction,
+      fraction,
+      sourceFraction: fraction,
       value: toValue(bgaEvent.bmpKey, options.base62),
     });
   }
